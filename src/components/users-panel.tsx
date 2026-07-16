@@ -5,7 +5,7 @@ import { useAuth } from "@/components/auth-provider";
 import { AdminUser } from "@/lib/types";
 import { DEMO_USERS, DEMO_METRICS } from "@/lib/demo-data";
 import { StatCard } from "@/components/ui/stat-card";
-import { UsersIcon, EyeIcon, PencilIcon, TrashIcon } from "@/components/icons";
+import { UsersIcon, EyeIcon, PencilIcon, TrashIcon, RefreshIcon } from "@/components/icons";
 import { Modal } from "@/components/ui/modal";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
@@ -169,22 +169,31 @@ export function UsersPanel() {
       </div>
 
       <div className="flex flex-wrap gap-4 items-center justify-between">
-        <input 
-          type="text" 
-          placeholder="Search by name or number..." 
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="border border-border rounded-lg px-3 py-2 bg-surface text-sm w-full md:w-64"
-        />
-        <select
-          value={filterRole}
-          onChange={e => setFilterRole(e.target.value as any)}
-          className="border border-border rounded-lg px-3 py-2 bg-surface text-sm"
+        <div className="flex gap-4 flex-wrap flex-1">
+          <input 
+            type="text" 
+            placeholder="Search by name or number..." 
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="border border-border rounded-lg px-3 py-2 bg-surface text-sm w-full md:w-64"
+          />
+          <select
+            value={filterRole}
+            onChange={e => setFilterRole(e.target.value as any)}
+            className="border border-border rounded-lg px-3 py-2 bg-surface text-sm"
+          >
+            <option value="all">All Roles</option>
+            <option value="user">Regular Users</option>
+            <option value="admin">Admins</option>
+          </select>
+        </div>
+        <button 
+          onClick={() => void load()} 
+          className="rounded-lg border border-border bg-surface p-2 text-sm font-medium hover:bg-surface-muted transition text-muted hover:text-foreground"
+          title="Refresh Data"
         >
-          <option value="all">All Roles</option>
-          <option value="user">Regular Users</option>
-          <option value="admin">Admins</option>
-        </select>
+          <RefreshIcon className="w-5 h-5" />
+        </button>
       </div>
 
       <div className="bg-surface rounded-xl border border-border overflow-hidden">

@@ -1,11 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/auth-provider";
 import type { ListTopUpsResponse, TopUp, TopUpStatus } from "@/lib/types";
 import { StatCard } from "@/components/ui/stat-card";
-import { TopupIcon, EyeIcon, TrashIcon } from "@/components/icons";
+import { TopupIcon, EyeIcon, TrashIcon, RefreshIcon } from "@/components/icons";
 import { Modal } from "@/components/ui/modal";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from "recharts";
 
@@ -65,21 +64,26 @@ function createdByLabel(topup: TopUp) {
   return by.name || by.number || by._id;
 }
 
-function attachmentLabel(topup: TopUp, token: string | null) {
+function attachmentLabel(topup: TopUp, token: string | null, truncate: boolean = false) {
   const file = topup.ppfid;
   if (!file) return "—";
   if (typeof file === "string") return file;
-  const name = file.originalName || file._id;
+  
+  let name = file.originalName || file._id || "";
+  if (truncate && name.length > 20) {
+    name = name.substring(0, 15) + "...";
+  }
+
   if (file._id && token) {
-    const url = `/api/files/${file._id}?token=${token}&name=${encodeURIComponent(name)}`;
+    const url = `/api/files/${file._id}?token=${token}&name=${encodeURIComponent(file.originalName || file._id)}`;
     return (
-      <a href={url} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline font-medium inline-flex items-center gap-1" onClick={e => e.stopPropagation()}>
-        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
-        {name}
+      <a href={url} target="_blank" rel="noopener noreferrer" className={`text-accent hover:underline font-medium inline-flex items-center gap-1 ${truncate ? "max-w-[150px] truncate" : "break-all"}`} onClick={e => e.stopPropagation()} title={file.originalName || file._id}>
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <span className={truncate ? "truncate" : ""}>{name}</span>
       </a>
     );
   }
-  return name;
+  return <span className={truncate ? "truncate max-w-[150px] inline-block" : "break-all"} title={name}>{name}</span>;
 }
 
 const COLORS = {
@@ -90,25 +94,17 @@ const COLORS = {
 
 export function TopUpsPanel() {
   const { token } = useAuth();
-  const searchParams = useSearchParams();
-  const isAllMode = searchParams.get("status") === "all";
-  const defaultView = isAllMode ? "all" : "pending";
-
+  
   const [topups, setTopups] = useState<TopUp[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
   const [query, setQuery] = useState("");
-  const [view, setView] = useState(defaultView);
-  
-  // Update view when URL changes
-  useEffect(() => {
-    setView(isAllMode ? "all" : "pending");
-  }, [isAllMode]);
+  const [view, setView] = useState("all");
   
   const [busyId, setBusyId] = useState<string | null>(null);
   const [selectedTopup, setSelectedTopup] = useState<TopUp | null>(null);
-  const [modalMode, setModalMode] = useState<"view" | "delete" | null>(null);
+  const [modalMode, setModalMode] = useState<"view" | "delete" | "approve" | "decline" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   // Pagination
@@ -193,27 +189,30 @@ export function TopUpsPanel() {
   const totalPages = Math.ceil(visible.length / pageSize) || 1;
   const paginatedData = visible.slice((page - 1) * pageSize, page * pageSize);
 
-  async function review(topupId: string, status: "approved" | "declined") {
-    setBusyId(topupId);
-    setError(null);
+  const handleReviewSubmit = async (status: "approved" | "declined") => {
+    if (!selectedTopup || !token) return;
+    setBusyId("review");
+    setActionError(null);
     try {
-      const response = await fetch(`/api/topups/${topupId}`, {
+      const response = await fetch(`/api/topups/${selectedTopup._id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ status }),
       });
       const data = await response.json();
       if (!response.ok || data.success === false) {
-        setError(data.error || data.message || "Failed to update top-up");
+        setActionError(data.error || data.message || "Failed to update top-up");
         return;
       }
+      setModalMode(null);
+      setSelectedTopup(null);
       load();
     } catch {
-      setError("Network error while updating top-up");
+      setActionError("Network error while updating top-up");
     } finally {
       setBusyId(null);
     }
-  }
+  };
 
   const handleDeleteSubmit = async () => {
     if (!selectedTopup || !token) return;
@@ -241,10 +240,14 @@ export function TopUpsPanel() {
 
   return (
     <div className="space-y-6">
-      {/* Top right refresh button */}
+      {/* Top right refresh icon */}
       <div className="flex justify-end -mt-16 sm:-mt-20 relative z-10 mb-4">
-        <button onClick={() => void load()} className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-muted transition shadow-sm">
-          Refresh Data
+        <button 
+          onClick={() => void load()} 
+          className="rounded-lg border border-border bg-surface p-2 text-sm font-medium hover:bg-surface-muted transition shadow-sm text-muted hover:text-foreground"
+          title="Refresh Data"
+        >
+          <RefreshIcon className="w-5 h-5" />
         </button>
       </div>
 
@@ -284,22 +287,16 @@ export function TopUpsPanel() {
             onChange={e => setQuery(e.target.value)}
             className="border border-border rounded-lg px-4 py-2 bg-surface text-sm w-full md:w-96 shadow-sm"
           />
-          {isAllMode ? (
-            <select
-              value={view}
-              onChange={e => setView(e.target.value)}
-              className="border border-border rounded-lg px-3 py-2 bg-surface text-sm shadow-sm"
-            >
-              <option value="all">All Top-ups</option>
-              <option value="pending">Pending</option>
-              <option value="approved">Approved</option>
-              <option value="declined">Declined</option>
-            </select>
-          ) : (
-            <div className="border border-border rounded-lg px-3 py-2 bg-surface-muted text-sm shadow-sm font-medium text-muted">
-              Pending Requests
-            </div>
-          )}
+          <select
+            value={view}
+            onChange={e => setView(e.target.value)}
+            className="border border-border rounded-lg px-3 py-2 bg-surface text-sm shadow-sm"
+          >
+            <option value="all">All Top-ups</option>
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="declined">Declined</option>
+          </select>
         </div>
         
         {/* Columns Dropdown */}
@@ -368,7 +365,7 @@ export function TopUpsPanel() {
                           {phone ? <div className="mt-0.5 text-xs text-muted">{phone}</div> : null}
                         </td>
                       )}
-                      {cols.attachment && <td className="px-4 py-4 text-muted">{attachmentLabel(topup, token)}</td>}
+                      {cols.attachment && <td className="px-4 py-4 text-muted">{attachmentLabel(topup, token, true)}</td>}
                       {cols.submitted && <td className="px-4 py-4 text-muted">{formatWhen(topup.createdAt)}</td>}
                       {cols.status && <td className="px-4 py-4"><StatusBadge status={status} /></td>}
                       {cols.actions && (
@@ -376,8 +373,8 @@ export function TopUpsPanel() {
                           <div className="flex justify-end items-center gap-2">
                             {status === "pending" ? (
                               <>
-                                <button disabled={busyId === topup._id} onClick={(e) => { e.stopPropagation(); review(topup._id, "approved"); }} className="rounded-lg bg-accent px-3 py-1 text-xs font-medium text-white hover:bg-accent-hover transition disabled:opacity-60">Approve</button>
-                                <button disabled={busyId === topup._id} onClick={(e) => { e.stopPropagation(); review(topup._id, "declined"); }} className="rounded-lg border border-danger/25 bg-danger-soft px-3 py-1 text-xs font-medium text-danger hover:bg-danger hover:text-white transition disabled:opacity-60">Decline</button>
+                                <button disabled={busyId === topup._id} onClick={(e) => { e.stopPropagation(); setSelectedTopup(topup); setModalMode("approve"); }} className="rounded-lg bg-accent px-3 py-1 text-xs font-medium text-white hover:bg-accent-hover transition disabled:opacity-60">Approve</button>
+                                <button disabled={busyId === topup._id} onClick={(e) => { e.stopPropagation(); setSelectedTopup(topup); setModalMode("decline"); }} className="rounded-lg border border-danger/25 bg-danger-soft px-3 py-1 text-xs font-medium text-danger hover:bg-danger hover:text-white transition disabled:opacity-60">Decline</button>
                               </>
                             ) : null}
                             <button onClick={(e) => { e.stopPropagation(); setSelectedTopup(topup); setModalMode("view"); }} className="p-1.5 text-muted hover:text-foreground transition"><EyeIcon className="w-4 h-4" /></button>
@@ -430,8 +427,34 @@ export function TopUpsPanel() {
               <div><p className="text-xs text-muted mb-1">Submitted At</p><p className="font-medium">{formatWhen(selectedTopup.createdAt)}</p></div>
               <div className="col-span-2">
                 <p className="text-xs text-muted mb-1">Attachment</p>
-                <div className="font-medium text-sm p-3 bg-surface-muted rounded-lg inline-block">{attachmentLabel(selectedTopup, token)}</div>
+                <div className="font-medium text-sm p-3 bg-surface-muted rounded-lg inline-block">{attachmentLabel(selectedTopup, token, false)}</div>
               </div>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal isOpen={modalMode === "approve"} onClose={() => { setModalMode(null); setSelectedTopup(null); setActionError(null); }} title="Approve Top-up">
+        {selectedTopup && (
+          <div className="space-y-4">
+            {actionError && <div className="bg-danger-soft text-danger p-3 rounded-lg text-sm">{actionError}</div>}
+            <p className="text-sm">Are you sure you want to approve this top-up request for <strong>{formatMoney(selectedTopup.amount)}</strong>?</p>
+            <div className="flex justify-end gap-2 mt-6">
+              <button type="button" onClick={() => { setModalMode(null); setSelectedTopup(null); setActionError(null); }} className="px-4 py-2 border border-border rounded-lg text-sm hover:bg-surface-muted transition">Cancel</button>
+              <button type="button" onClick={() => handleReviewSubmit("approved")} disabled={busyId === "review"} className="px-4 py-2 bg-accent text-white rounded-lg text-sm font-medium hover:bg-accent-hover transition disabled:opacity-50">Confirm Approve</button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal isOpen={modalMode === "decline"} onClose={() => { setModalMode(null); setSelectedTopup(null); setActionError(null); }} title="Decline Top-up">
+        {selectedTopup && (
+          <div className="space-y-4">
+            {actionError && <div className="bg-danger-soft text-danger p-3 rounded-lg text-sm">{actionError}</div>}
+            <p className="text-sm">Are you sure you want to decline this top-up request for <strong>{formatMoney(selectedTopup.amount)}</strong>?</p>
+            <div className="flex justify-end gap-2 mt-6">
+              <button type="button" onClick={() => { setModalMode(null); setSelectedTopup(null); setActionError(null); }} className="px-4 py-2 border border-border rounded-lg text-sm hover:bg-surface-muted transition">Cancel</button>
+              <button type="button" onClick={() => handleReviewSubmit("declined")} disabled={busyId === "review"} className="px-4 py-2 bg-danger text-white rounded-lg text-sm font-medium hover:bg-danger/90 transition disabled:opacity-50">Confirm Decline</button>
             </div>
           </div>
         )}

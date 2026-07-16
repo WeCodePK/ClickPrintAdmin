@@ -5,7 +5,7 @@ import { useAuth } from "@/components/auth-provider";
 import type { ListShopsResponse, Shop } from "@/lib/types";
 import { DEMO_METRICS } from "@/lib/demo-data";
 import { StatCard } from "@/components/ui/stat-card";
-import { ShopIcon, EyeIcon, PencilIcon, TrashIcon } from "@/components/icons";
+import { ShopIcon, EyeIcon, PencilIcon, TrashIcon, RefreshIcon } from "@/components/icons";
 import { Modal } from "@/components/ui/modal";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -230,7 +230,7 @@ export function ShopsList() {
         </div>
         <div className="flex gap-3">
           <button onClick={downloadPDF} className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-muted transition">Download PDF</button>
-          <button onClick={() => void load()} className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-muted transition">Refresh</button>
+          <button onClick={() => void load()} className="rounded-lg border border-border bg-surface p-2 text-sm font-medium hover:bg-surface-muted transition text-muted hover:text-foreground" title="Refresh Data"><RefreshIcon className="w-5 h-5" /></button>
         </div>
       </div>
 
