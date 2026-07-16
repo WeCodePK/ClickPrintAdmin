@@ -108,14 +108,18 @@ export interface AdminUser {
   name: string;
   number: string;
   balance: number;
-  isAdmin: boolean;
+  isAdmin?: boolean;
+  isDisabled?: boolean;
   totalPrints?: number;
   lastActive?: string;
   joinedAt?: string;
+  pushTokens?: string[];
 }
 
 export interface PatchUserInput {
   name?: string;
+  number?: string;
   balance?: number;
   isAdmin?: boolean;
+  isDisabled?: boolean;
 }

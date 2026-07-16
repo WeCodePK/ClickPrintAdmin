@@ -89,3 +89,27 @@ export function MenuIcon(props: React.SVGProps<SVGSVGElement>) {
     </svg>
   );
 }
+
+export function ShieldIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    </svg>
+  );
+}
+
+export function CrownIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M6 13l3.29-8.42A2 2 0 0 1 11 3h2a2 2 0 0 1 1.71 1.58L18 13M4 13H2v7a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-7h-2M8 6l1.5 2M14 6l-1.5 2" />
+    </svg>
+  );
+}
+
+export function PlusIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}

@@ -7,6 +7,8 @@ import { StatCard } from "@/components/ui/stat-card";
 import { TopupIcon, EyeIcon, TrashIcon, RefreshIcon } from "@/components/icons";
 import { Modal } from "@/components/ui/modal";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from "recharts";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 function normalizeStatus(value: unknown): TopUpStatus {
   if (typeof value !== "string") return "pending";
@@ -189,6 +191,43 @@ export function TopUpsPanel() {
   const totalPages = Math.ceil(visible.length / pageSize) || 1;
   const paginatedData = visible.slice((page - 1) * pageSize, page * pageSize);
 
+  const downloadPDF = () => {
+    const doc = new jsPDF();
+    doc.text("Top-ups Report", 14, 15);
+    
+    const headers = [];
+    if (cols.amount) headers.push("Amount");
+    if (cols.requestedBy) headers.push("Requested by");
+    if (cols.attachment) headers.push("Attachment");
+    if (cols.submitted) headers.push("Submitted");
+    if (cols.status) headers.push("Status");
+    
+    const tableData = visible.map(topup => {
+      const row = [];
+      if (cols.amount) row.push(formatMoney(topup.amount));
+      if (cols.requestedBy) row.push(createdByLabel(topup));
+      if (cols.attachment) {
+        const file = topup.ppfid;
+        if (!file) row.push("—");
+        else if (typeof file === "string") row.push(file);
+        else row.push(file.originalName || file._id || "—");
+      }
+      if (cols.submitted) row.push(formatWhen(topup.createdAt));
+      if (cols.status) row.push(normalizeStatus(topup.status));
+      return row;
+    });
+
+    autoTable(doc, {
+      head: [headers],
+      body: tableData,
+      startY: 20,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [0, 217, 163] } // accent color
+    });
+
+    doc.save("topups-report.pdf");
+  };
+
   const handleReviewSubmit = async (status: "approved" | "declined") => {
     if (!selectedTopup || !token) return;
     setBusyId("review");
@@ -299,16 +338,18 @@ export function TopUpsPanel() {
           </select>
         </div>
         
-        {/* Columns Dropdown */}
-        <div className="relative">
-          <button 
-            onClick={() => setColsMenuOpen(!colsMenuOpen)}
-            className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-muted transition shadow-sm flex items-center gap-2"
-          >
-            Columns
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-          </button>
-          {colsMenuOpen && (
+        {/* Columns Dropdown and PDF */}
+        <div className="flex gap-3 items-center">
+          <button onClick={downloadPDF} className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-muted transition shadow-sm">Download PDF</button>
+          <div className="relative">
+            <button 
+              onClick={() => setColsMenuOpen(!colsMenuOpen)}
+              className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-muted transition shadow-sm flex items-center gap-2"
+            >
+              Columns
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            {colsMenuOpen && (
             <div className="absolute right-0 mt-2 w-48 bg-surface border border-border rounded-lg shadow-lg z-20 p-2">
               {Object.entries(cols).map(([key, isVisible]) => (
                 <label key={key} className="flex items-center gap-2 p-2 hover:bg-surface-muted rounded cursor-pointer text-sm capitalize">
@@ -323,6 +364,7 @@ export function TopUpsPanel() {
               ))}
             </div>
           )}
+          </div>
         </div>
       </div>
 

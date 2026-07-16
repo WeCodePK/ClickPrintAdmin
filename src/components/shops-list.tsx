@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useAuth } from "@/components/auth-provider";
 import type { ListShopsResponse, Shop } from "@/lib/types";
 import { DEMO_METRICS } from "@/lib/demo-data";
@@ -40,7 +41,6 @@ export function ShopsList() {
   const [shops, setShops] = useState<Shop[]>([]);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [capFilter, setCapFilter] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,6 +48,21 @@ export function ShopsList() {
   const [modalMode, setModalMode] = useState<"view" | "edit" | "delete" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Pagination
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
+
+  // Column visibility
+  const [cols, setCols] = useState({
+    name: true,
+    address: true,
+    wallet: true,
+    capabilities: true,
+    status: true,
+    actions: true
+  });
+  const [colsMenuOpen, setColsMenuOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -82,7 +97,6 @@ export function ShopsList() {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const capQ = capFilter.trim().toLowerCase();
     
     return shops.filter(shop => {
       const matchSearch = !q || shop.name.toLowerCase().includes(q) || shop.address.toLowerCase().includes(q) || shop.walletNumber?.includes(q);
@@ -90,11 +104,15 @@ export function ShopsList() {
                           statusFilter === "disabled" ? shop.isDisabled :
                           statusFilter === "online" ? shop.isOnline && !shop.isDisabled :
                           statusFilter === "offline" ? !shop.isOnline && !shop.isDisabled : true;
-      const matchCap = !capQ || shop.capabilities?.some(c => c.toLowerCase().includes(capQ));
       
-      return matchSearch && matchStatus && matchCap;
+      return matchSearch && matchStatus;
     });
-  }, [shops, query, statusFilter, capFilter]);
+  }, [shops, query, statusFilter]);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [query, statusFilter]);
 
   const stats = useMemo(() => {
     const total = shops.length;
@@ -102,20 +120,32 @@ export function ShopsList() {
     return { total, online };
   }, [shops]);
 
+  const totalPages = Math.ceil(filtered.length / pageSize) || 1;
+  const paginatedData = filtered.slice((page - 1) * pageSize, page * pageSize);
+
   const downloadPDF = () => {
     const doc = new jsPDF();
     doc.text("Shops Report", 14, 15);
     
-    const tableData = filtered.map(shop => [
-      shop.name,
-      shop.address,
-      shop.walletNumber || "—",
-      shop.isDisabled ? "Disabled" : shop.isOnline ? "Online" : "Offline",
-      shop.capabilities?.join(", ") || "—"
-    ]);
+    const headers = [];
+    if (cols.name) headers.push("Name");
+    if (cols.address) headers.push("Address");
+    if (cols.wallet) headers.push("Wallet");
+    if (cols.capabilities) headers.push("Capabilities");
+    if (cols.status) headers.push("Status");
+    
+    const tableData = filtered.map(shop => {
+      const row = [];
+      if (cols.name) row.push(shop.name);
+      if (cols.address) row.push(shop.address);
+      if (cols.wallet) row.push(shop.walletNumber || "—");
+      if (cols.capabilities) row.push(shop.capabilities?.join(", ") || "—");
+      if (cols.status) row.push(shop.isDisabled ? "Disabled" : shop.isOnline ? "Online" : "Offline");
+      return row;
+    });
 
     autoTable(doc, {
-      head: [["Name", "Address", "Wallet", "Status", "Capabilities"]],
+      head: [headers],
       body: tableData,
       startY: 20,
       styles: { fontSize: 8 },
@@ -194,6 +224,24 @@ export function ShopsList() {
 
   return (
     <div className="space-y-6">
+      {/* Top right actions */}
+      <div className="flex justify-end items-center gap-2 -mt-16 sm:-mt-20 relative z-10 mb-4">
+        <Link
+          href="/shops/create"
+          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover transition shadow-sm flex items-center gap-2"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
+          Create Shop
+        </Link>
+        <button 
+          onClick={() => void load()} 
+          className="rounded-lg border border-border bg-surface p-2 text-sm font-medium hover:bg-surface-muted transition shadow-sm text-muted hover:text-foreground"
+          title="Refresh Data"
+        >
+          <RefreshIcon className="w-5 h-5" />
+        </button>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <StatCard label="Total Active Shops" value={stats.total} icon={<ShopIcon />} accentColor="accent" />
         <StatCard label="Online Shops" value={stats.online} accentColor="print-request" />
@@ -201,26 +249,19 @@ export function ShopsList() {
         <StatCard label="New Shops (30d)" value={DEMO_METRICS.shopsAddedLast30Days} isDemo />
       </div>
 
-      <div className="flex flex-wrap gap-4 items-center justify-between">
-        <div className="flex gap-4 flex-wrap">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex gap-4 flex-wrap flex-1">
           <input 
             type="text" 
             placeholder="Search shops..." 
             value={query}
             onChange={e => setQuery(e.target.value)}
-            className="border border-border rounded-lg px-3 py-2 bg-surface text-sm w-full md:w-56"
-          />
-          <input 
-            type="text" 
-            placeholder="Capability filter..." 
-            value={capFilter}
-            onChange={e => setCapFilter(e.target.value)}
-            className="border border-border rounded-lg px-3 py-2 bg-surface text-sm w-full md:w-40"
+            className="border border-border rounded-lg px-4 py-2 bg-surface text-sm w-full md:w-64 shadow-sm"
           />
           <select
             value={statusFilter}
             onChange={e => setStatusFilter(e.target.value)}
-            className="border border-border rounded-lg px-3 py-2 bg-surface text-sm"
+            className="border border-border rounded-lg px-3 py-2 bg-surface text-sm shadow-sm"
           >
             <option value="all">All Statuses</option>
             <option value="online">Online</option>
@@ -228,9 +269,35 @@ export function ShopsList() {
             <option value="disabled">Disabled</option>
           </select>
         </div>
-        <div className="flex gap-3">
-          <button onClick={downloadPDF} className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-muted transition">Download PDF</button>
-          <button onClick={() => void load()} className="rounded-lg border border-border bg-surface p-2 text-sm font-medium hover:bg-surface-muted transition text-muted hover:text-foreground" title="Refresh Data"><RefreshIcon className="w-5 h-5" /></button>
+        
+        <div className="flex gap-3 items-center">
+          <button onClick={downloadPDF} className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-muted transition shadow-sm">Download PDF</button>
+          
+          {/* Columns Dropdown */}
+          <div className="relative">
+            <button 
+              onClick={() => setColsMenuOpen(!colsMenuOpen)}
+              className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-muted transition shadow-sm flex items-center gap-2"
+            >
+              Columns
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            {colsMenuOpen && (
+              <div className="absolute right-0 mt-2 w-48 bg-surface border border-border rounded-lg shadow-lg z-20 p-2">
+                {Object.entries(cols).map(([key, isVisible]) => (
+                  <label key={key} className="flex items-center gap-2 p-2 hover:bg-surface-muted rounded cursor-pointer text-sm capitalize">
+                    <input 
+                      type="checkbox" 
+                      checked={isVisible} 
+                      onChange={() => setCols(prev => ({ ...prev, [key]: !prev[key as keyof typeof cols] }))}
+                      className="rounded"
+                    />
+                    {key}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -243,50 +310,89 @@ export function ShopsList() {
           <table className="w-full text-left text-sm whitespace-nowrap">
             <thead className="bg-surface-muted/50 text-muted">
               <tr>
-                <th className="px-4 py-3 font-medium">Name</th>
-                <th className="px-4 py-3 font-medium">Address</th>
-                <th className="px-4 py-3 font-medium">Wallet</th>
-                <th className="px-4 py-3 font-medium">Capabilities</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium text-right">Actions</th>
+                {cols.name && <th className="px-4 py-3 font-medium">Name</th>}
+                {cols.address && <th className="px-4 py-3 font-medium">Address</th>}
+                {cols.wallet && <th className="px-4 py-3 font-medium">Wallet</th>}
+                {cols.capabilities && <th className="px-4 py-3 font-medium">Capabilities</th>}
+                {cols.status && <th className="px-4 py-3 font-medium">Status</th>}
+                {cols.actions && <th className="px-4 py-3 font-medium text-right">Actions</th>}
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr><td colSpan={6} className="px-4 py-8 text-center text-muted">Loading shops...</td></tr>
-              ) : filtered.length === 0 ? (
+              ) : paginatedData.length === 0 ? (
                 <tr><td colSpan={6} className="px-4 py-8 text-center text-muted">No shops found.</td></tr>
               ) : (
-                filtered.map(shop => (
-                  <tr key={shop._id} className="border-b border-border last:border-0 hover:bg-surface-muted/30">
-                    <td className="px-4 py-3 font-medium">
-                      {shop.name}
-                      {shop.owner ? <div className="text-[10px] text-muted">Owner: {shop.owner}</div> : null}
-                    </td>
-                    <td className="px-4 py-3 text-muted max-w-[200px] truncate">{shop.address}</td>
-                    <td className="px-4 py-3 text-muted">{shop.walletNumber || "—"}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex gap-1">
-                        {shop.capabilities?.slice(0, 2).map(c => (
-                          <span key={c} className="bg-surface-muted text-muted px-1.5 py-0.5 rounded text-[10px]">{c}</span>
-                        ))}
-                        {(shop.capabilities?.length || 0) > 2 && <span className="text-[10px] text-muted">+{shop.capabilities!.length - 2}</span>}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3"><StatusPill online={shop.isOnline} disabled={shop.isDisabled} /></td>
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end gap-2">
-                        <button onClick={() => openModal(shop, "view")} className="p-1.5 text-muted hover:text-foreground transition"><EyeIcon className="w-4 h-4" /></button>
-                        <button onClick={() => openModal(shop, "edit")} className="p-1.5 text-muted hover:text-accent transition"><PencilIcon className="w-4 h-4" /></button>
-                        <button onClick={() => openModal(shop, "delete")} className="p-1.5 text-muted hover:text-danger transition"><TrashIcon className="w-4 h-4" /></button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                paginatedData.map(shop => {
+                  const addressDisplay = shop.address.length > 15 ? shop.address.substring(0, 15) + "..." : shop.address;
+                  return (
+                    <tr 
+                      key={shop._id} 
+                      className="border-b border-border last:border-0 hover:bg-surface-muted/30 cursor-pointer transition-colors"
+                      onClick={() => openModal(shop, "view")}
+                    >
+                      {cols.name && (
+                        <td className="px-4 py-3 font-medium">
+                          {shop.name}
+                          {shop.owner ? <div className="text-[10px] text-muted">Owner: {shop.owner}</div> : null}
+                        </td>
+                      )}
+                      {cols.address && <td className="px-4 py-3 text-muted max-w-[200px]" title={shop.address}>{addressDisplay}</td>}
+                      {cols.wallet && <td className="px-4 py-3 text-muted">{shop.walletNumber || "—"}</td>}
+                      {cols.capabilities && (
+                        <td className="px-4 py-3">
+                          <div className="flex gap-1">
+                            {shop.capabilities?.slice(0, 2).map(c => (
+                              <span key={c} className="bg-surface-muted text-muted px-1.5 py-0.5 rounded text-[10px]">{c}</span>
+                            ))}
+                            {(shop.capabilities?.length || 0) > 2 && <span className="text-[10px] text-muted">+{shop.capabilities!.length - 2}</span>}
+                          </div>
+                        </td>
+                      )}
+                      {cols.status && <td className="px-4 py-3"><StatusPill online={shop.isOnline} disabled={shop.isDisabled} /></td>}
+                      {cols.actions && (
+                        <td className="px-4 py-3">
+                          <div className="flex justify-end gap-2">
+                            <button onClick={(e) => { e.stopPropagation(); openModal(shop, "view"); }} className="p-1.5 text-muted hover:text-foreground transition"><EyeIcon className="w-4 h-4" /></button>
+                            <button onClick={(e) => { e.stopPropagation(); openModal(shop, "edit"); }} className="p-1.5 text-muted hover:text-accent transition"><PencilIcon className="w-4 h-4" /></button>
+                            <button onClick={(e) => { e.stopPropagation(); openModal(shop, "delete"); }} className="p-1.5 text-muted hover:text-danger transition"><TrashIcon className="w-4 h-4" /></button>
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
+
+        {/* Pagination controls */}
+        {!loading && paginatedData.length > 0 && (
+          <div className="border-t border-border bg-surface px-4 py-3 flex items-center justify-between">
+            <div className="text-sm text-muted">
+              Showing <span className="font-medium">{(page - 1) * pageSize + 1}</span> to <span className="font-medium">{Math.min(page * pageSize, filtered.length)}</span> of <span className="font-medium">{filtered.length}</span> results
+            </div>
+            <div className="flex gap-2">
+              <button 
+                onClick={() => setPage(p => Math.max(1, p - 1))} 
+                disabled={page === 1}
+                className="px-3 py-1 rounded-md border border-border bg-surface text-sm hover:bg-surface-muted transition disabled:opacity-50"
+              >
+                Previous
+              </button>
+              <div className="px-3 py-1 text-sm font-medium">Page {page} of {totalPages}</div>
+              <button 
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))} 
+                disabled={page === totalPages}
+                className="px-3 py-1 rounded-md border border-border bg-surface text-sm hover:bg-surface-muted transition disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <Modal isOpen={modalMode === "view"} onClose={closeModal} title="Shop Details">

@@ -10,14 +10,7 @@ function SidebarNav() {
   const pathname = usePathname();
   const router = useRouter();
   const { user, isAdmin, logout } = useAuth();
-
-  const shopsOpenDefault = pathname.startsWith("/shops");
-  const [shopsOpen, setShopsOpen] = useState(shopsOpenDefault);
   const [collapsed, setCollapsed] = useState(false);
-
-  useEffect(() => {
-    if (shopsOpenDefault) setShopsOpen(true);
-  }, [shopsOpenDefault]);
 
   const linkClass = (active: boolean) =>
     `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
@@ -36,8 +29,8 @@ function SidebarNav() {
   const subLinkClass = (active: boolean) =>
     `block rounded-md px-3 py-2 text-sm transition-colors ${
       active
-        ? "text-nav-active font-medium"
-        : "text-sidebar-muted hover:text-white"
+        ? "bg-nav-active/10 text-nav-active font-medium"
+        : "text-sidebar-muted hover:text-white hover:bg-white/5"
     }`;
 
   return (
@@ -89,49 +82,17 @@ function SidebarNav() {
             </div>
           </Link>
 
-          <div>
-            <button
-              type="button"
-              onClick={() => {
-                if (collapsed) setCollapsed(false);
-                setShopsOpen((v) => !v);
-              }}
-              className={groupBtn(pathname.startsWith("/shops"))}
-              aria-expanded={shopsOpen}
-              title={collapsed ? "Shops" : undefined}
-            >
-              <div className="flex items-center gap-3">
-                {!collapsed && <span className="text-xs opacity-50">3.</span>}
-                <ShopIcon className="w-5 h-5" />
-                {!collapsed && <span>Shops</span>}
-              </div>
-              {!collapsed && (
-                <span
-                  className={`text-[10px] transition-transform duration-200 opacity-50 ${
-                    shopsOpen ? "rotate-90" : ""
-                  }`}
-                >
-                  ▸
-                </span>
-              )}
-            </button>
-            {shopsOpen && !collapsed ? (
-              <div className="mt-1 ml-9 space-y-1 border-l border-white/10 pl-2">
-                <Link
-                  href="/shops"
-                  className={subLinkClass(pathname === "/shops")}
-                >
-                  All shops
-                </Link>
-                <Link
-                  href="/shops/create"
-                  className={subLinkClass(pathname === "/shops/create")}
-                >
-                  Create shop
-                </Link>
-              </div>
-            ) : null}
-          </div>
+          <Link
+            href="/shops"
+            className={linkClass(pathname.startsWith("/shops"))}
+            title={collapsed ? "Shops" : undefined}
+          >
+            <div className="flex items-center gap-3">
+              {!collapsed && <span className="text-xs opacity-50">3.</span>}
+              <ShopIcon className="w-5 h-5" />
+              {!collapsed && <span>Shops</span>}
+            </div>
+          </Link>
 
           <Link
             href="/topups"
