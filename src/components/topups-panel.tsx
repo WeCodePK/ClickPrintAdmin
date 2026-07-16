@@ -73,7 +73,7 @@ function attachmentLabel(topup: TopUp, token: string | null) {
   if (file._id && token) {
     const url = `/api/files/${file._id}?token=${token}&name=${encodeURIComponent(name)}`;
     return (
-      <a href={url} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline font-medium inline-flex items-center gap-1">
+      <a href={url} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline font-medium inline-flex items-center gap-1" onClick={e => e.stopPropagation()}>
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
         {name}
       </a>
@@ -91,7 +91,8 @@ const COLORS = {
 export function TopUpsPanel() {
   const { token } = useAuth();
   const searchParams = useSearchParams();
-  const defaultView = searchParams.get("status") === "all" ? "all" : "pending";
+  const isAllMode = searchParams.get("status") === "all";
+  const defaultView = isAllMode ? "all" : "pending";
 
   const [topups, setTopups] = useState<TopUp[]>([]);
   const [loading, setLoading] = useState(true);
@@ -100,10 +101,30 @@ export function TopUpsPanel() {
   const [query, setQuery] = useState("");
   const [view, setView] = useState(defaultView);
   
+  // Update view when URL changes
+  useEffect(() => {
+    setView(isAllMode ? "all" : "pending");
+  }, [isAllMode]);
+  
   const [busyId, setBusyId] = useState<string | null>(null);
   const [selectedTopup, setSelectedTopup] = useState<TopUp | null>(null);
   const [modalMode, setModalMode] = useState<"view" | "delete" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  // Pagination
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
+
+  // Column visibility
+  const [cols, setCols] = useState({
+    amount: true,
+    requestedBy: true,
+    attachment: true,
+    submitted: true,
+    status: true,
+    actions: true
+  });
+  const [colsMenuOpen, setColsMenuOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -147,6 +168,11 @@ export function TopUpsPanel() {
     });
   }, [topups, view, query]);
 
+  // Reset page when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [view, query]);
+
   const stats = useMemo(() => {
     let pending = 0, approved = 0, declined = 0, approvedAmount = 0;
     topups.forEach(t => {
@@ -163,6 +189,9 @@ export function TopUpsPanel() {
     { name: 'Approved', value: stats.approved, color: COLORS.approved },
     { name: 'Declined', value: stats.declined, color: COLORS.declined }
   ].filter(d => d.value > 0);
+
+  const totalPages = Math.ceil(visible.length / pageSize) || 1;
+  const paginatedData = visible.slice((page - 1) * pageSize, page * pageSize);
 
   async function review(topupId: string, status: "approved" | "declined") {
     setBusyId(topupId);
@@ -212,6 +241,13 @@ export function TopUpsPanel() {
 
   return (
     <div className="space-y-6">
+      {/* Top right refresh button */}
+      <div className="flex justify-end -mt-16 sm:-mt-20 relative z-10 mb-4">
+        <button onClick={() => void load()} className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-muted transition shadow-sm">
+          Refresh Data
+        </button>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 grid grid-cols-2 gap-4">
           <StatCard label="Total Topups" value={stats.total} icon={<TopupIcon />} accentColor="accent" />
@@ -240,76 +276,115 @@ export function TopUpsPanel() {
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex gap-4 flex-wrap">
+        <div className="flex gap-4 flex-wrap flex-1">
           <input 
             type="text" 
-            placeholder="Search by name, number, amount..." 
+            placeholder="Search by name, number, or exact amount..." 
             value={query}
             onChange={e => setQuery(e.target.value)}
-            className="border border-border rounded-lg px-3 py-2 bg-surface text-sm w-full md:w-64"
+            className="border border-border rounded-lg px-4 py-2 bg-surface text-sm w-full md:w-96 shadow-sm"
           />
-          <select
-            value={view}
-            onChange={e => setView(e.target.value)}
-            className="border border-border rounded-lg px-3 py-2 bg-surface text-sm"
-          >
-            <option value="all">All Top-ups</option>
-            <option value="pending">Pending</option>
-            <option value="approved">Approved</option>
-            <option value="declined">Declined</option>
-          </select>
+          {isAllMode ? (
+            <select
+              value={view}
+              onChange={e => setView(e.target.value)}
+              className="border border-border rounded-lg px-3 py-2 bg-surface text-sm shadow-sm"
+            >
+              <option value="all">All Top-ups</option>
+              <option value="pending">Pending</option>
+              <option value="approved">Approved</option>
+              <option value="declined">Declined</option>
+            </select>
+          ) : (
+            <div className="border border-border rounded-lg px-3 py-2 bg-surface-muted text-sm shadow-sm font-medium text-muted">
+              Pending Requests
+            </div>
+          )}
         </div>
-        <button onClick={() => void load()} className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-muted transition">Refresh</button>
+        
+        {/* Columns Dropdown */}
+        <div className="relative">
+          <button 
+            onClick={() => setColsMenuOpen(!colsMenuOpen)}
+            className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-muted transition shadow-sm flex items-center gap-2"
+          >
+            Columns
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          {colsMenuOpen && (
+            <div className="absolute right-0 mt-2 w-48 bg-surface border border-border rounded-lg shadow-lg z-20 p-2">
+              {Object.entries(cols).map(([key, isVisible]) => (
+                <label key={key} className="flex items-center gap-2 p-2 hover:bg-surface-muted rounded cursor-pointer text-sm capitalize">
+                  <input 
+                    type="checkbox" 
+                    checked={isVisible} 
+                    onChange={() => setCols(prev => ({ ...prev, [key]: !prev[key as keyof typeof cols] }))}
+                    className="rounded"
+                  />
+                  {key.replace(/([A-Z])/g, ' $1').trim()}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {error ? <p className="rounded-xl border border-danger/20 bg-danger-soft px-4 py-3 text-sm text-danger">{error}</p> : null}
 
-      <div className="overflow-hidden rounded-2xl border border-border bg-surface">
+      <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
         <div className="overflow-x-auto">
           <table className="min-w-full text-left text-sm whitespace-nowrap">
             <thead className="border-b border-border bg-surface-muted/50 text-xs uppercase tracking-wide text-muted">
               <tr>
-                <th className="px-4 py-3 font-medium">Amount</th>
-                <th className="px-4 py-3 font-medium">Requested by</th>
-                <th className="px-4 py-3 font-medium">Attachment</th>
-                <th className="px-4 py-3 font-medium">Submitted</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium text-right">Actions</th>
+                {cols.amount && <th className="px-4 py-3 font-medium">Amount</th>}
+                {cols.requestedBy && <th className="px-4 py-3 font-medium">Requested by</th>}
+                {cols.attachment && <th className="px-4 py-3 font-medium">Attachment</th>}
+                {cols.submitted && <th className="px-4 py-3 font-medium">Submitted</th>}
+                {cols.status && <th className="px-4 py-3 font-medium">Status</th>}
+                {cols.actions && <th className="px-4 py-3 font-medium text-right">Actions</th>}
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr><td colSpan={6} className="px-4 py-12 text-center text-muted">Loading top-ups…</td></tr>
-              ) : visible.length === 0 ? (
+              ) : paginatedData.length === 0 ? (
                 <tr><td colSpan={6} className="px-4 py-12 text-center text-muted">No top-ups in this view.</td></tr>
               ) : (
-                visible.map((topup) => {
+                paginatedData.map((topup) => {
                   const status = normalizeStatus(topup.status);
                   const by = topup.createdBy;
                   const phone = typeof by === "object" && by?.number ? by.number : null;
 
                   return (
-                    <tr key={topup._id} className="border-b border-border/70 last:border-b-0 hover:bg-surface-muted/30">
-                      <td className="px-4 py-4 font-medium">{formatMoney(topup.amount)}</td>
-                      <td className="px-4 py-4">
-                        <div className="font-medium">{createdByLabel(topup)}</div>
-                        {phone ? <div className="mt-0.5 text-xs text-muted">{phone}</div> : null}
-                      </td>
-                      <td className="px-4 py-4 text-muted">{attachmentLabel(topup, token)}</td>
-                      <td className="px-4 py-4 text-muted">{formatWhen(topup.createdAt)}</td>
-                      <td className="px-4 py-4"><StatusBadge status={status} /></td>
-                      <td className="px-4 py-4">
-                        <div className="flex justify-end items-center gap-2">
-                          {status === "pending" ? (
-                            <>
-                              <button disabled={busyId === topup._id} onClick={() => review(topup._id, "approved")} className="rounded-lg bg-accent px-3 py-1 text-xs font-medium text-white hover:bg-accent-hover transition disabled:opacity-60">Approve</button>
-                              <button disabled={busyId === topup._id} onClick={() => review(topup._id, "declined")} className="rounded-lg border border-danger/25 bg-danger-soft px-3 py-1 text-xs font-medium text-danger hover:bg-danger hover:text-white transition disabled:opacity-60">Decline</button>
-                            </>
-                          ) : null}
-                          <button onClick={() => { setSelectedTopup(topup); setModalMode("view"); }} className="p-1.5 text-muted hover:text-foreground transition"><EyeIcon className="w-4 h-4" /></button>
-                          <button onClick={() => { setSelectedTopup(topup); setModalMode("delete"); }} className="p-1.5 text-muted hover:text-danger transition"><TrashIcon className="w-4 h-4" /></button>
-                        </div>
-                      </td>
+                    <tr 
+                      key={topup._id} 
+                      className="border-b border-border/70 last:border-b-0 hover:bg-surface-muted/50 cursor-pointer transition-colors"
+                      onClick={() => { setSelectedTopup(topup); setModalMode("view"); }}
+                    >
+                      {cols.amount && <td className="px-4 py-4 font-medium">{formatMoney(topup.amount)}</td>}
+                      {cols.requestedBy && (
+                        <td className="px-4 py-4">
+                          <div className="font-medium">{createdByLabel(topup)}</div>
+                          {phone ? <div className="mt-0.5 text-xs text-muted">{phone}</div> : null}
+                        </td>
+                      )}
+                      {cols.attachment && <td className="px-4 py-4 text-muted">{attachmentLabel(topup, token)}</td>}
+                      {cols.submitted && <td className="px-4 py-4 text-muted">{formatWhen(topup.createdAt)}</td>}
+                      {cols.status && <td className="px-4 py-4"><StatusBadge status={status} /></td>}
+                      {cols.actions && (
+                        <td className="px-4 py-4">
+                          <div className="flex justify-end items-center gap-2">
+                            {status === "pending" ? (
+                              <>
+                                <button disabled={busyId === topup._id} onClick={(e) => { e.stopPropagation(); review(topup._id, "approved"); }} className="rounded-lg bg-accent px-3 py-1 text-xs font-medium text-white hover:bg-accent-hover transition disabled:opacity-60">Approve</button>
+                                <button disabled={busyId === topup._id} onClick={(e) => { e.stopPropagation(); review(topup._id, "declined"); }} className="rounded-lg border border-danger/25 bg-danger-soft px-3 py-1 text-xs font-medium text-danger hover:bg-danger hover:text-white transition disabled:opacity-60">Decline</button>
+                              </>
+                            ) : null}
+                            <button onClick={(e) => { e.stopPropagation(); setSelectedTopup(topup); setModalMode("view"); }} className="p-1.5 text-muted hover:text-foreground transition"><EyeIcon className="w-4 h-4" /></button>
+                            <button onClick={(e) => { e.stopPropagation(); setSelectedTopup(topup); setModalMode("delete"); }} className="p-1.5 text-muted hover:text-danger transition"><TrashIcon className="w-4 h-4" /></button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   );
                 })
@@ -317,6 +392,32 @@ export function TopUpsPanel() {
             </tbody>
           </table>
         </div>
+        
+        {/* Pagination controls */}
+        {!loading && paginatedData.length > 0 && (
+          <div className="border-t border-border bg-surface px-4 py-3 flex items-center justify-between">
+            <div className="text-sm text-muted">
+              Showing <span className="font-medium">{(page - 1) * pageSize + 1}</span> to <span className="font-medium">{Math.min(page * pageSize, visible.length)}</span> of <span className="font-medium">{visible.length}</span> results
+            </div>
+            <div className="flex gap-2">
+              <button 
+                onClick={() => setPage(p => Math.max(1, p - 1))} 
+                disabled={page === 1}
+                className="px-3 py-1 rounded-md border border-border bg-surface text-sm hover:bg-surface-muted transition disabled:opacity-50"
+              >
+                Previous
+              </button>
+              <div className="px-3 py-1 text-sm font-medium">Page {page} of {totalPages}</div>
+              <button 
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))} 
+                disabled={page === totalPages}
+                className="px-3 py-1 rounded-md border border-border bg-surface text-sm hover:bg-surface-muted transition disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <Modal isOpen={modalMode === "view"} onClose={() => { setModalMode(null); setSelectedTopup(null); }} title="Top-up Details">

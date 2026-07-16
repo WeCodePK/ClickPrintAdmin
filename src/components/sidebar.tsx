@@ -16,6 +16,7 @@ function SidebarNav() {
   const topupsOpenDefault = pathname.startsWith("/topups");
   const [shopsOpen, setShopsOpen] = useState(shopsOpenDefault);
   const [topupsOpen, setTopupsOpen] = useState(topupsOpenDefault);
+  const [topupsHovered, setTopupsHovered] = useState(false);
 
   useEffect(() => {
     if (shopsOpenDefault) setShopsOpen(true);
@@ -123,12 +124,15 @@ function SidebarNav() {
             ) : null}
           </div>
 
-          <div>
+          <div
+            onMouseEnter={() => setTopupsHovered(true)}
+            onMouseLeave={() => setTopupsHovered(false)}
+          >
             <button
               type="button"
               onClick={() => setTopupsOpen((v) => !v)}
               className={groupBtn(pathname.startsWith("/topups"))}
-              aria-expanded={topupsOpen}
+              aria-expanded={topupsOpen || topupsHovered}
             >
               <div className="flex items-center gap-3">
                 <span className="text-xs opacity-50">4.</span>
@@ -137,13 +141,13 @@ function SidebarNav() {
               </div>
               <span
                 className={`text-[10px] transition-transform duration-200 opacity-50 ${
-                  topupsOpen ? "rotate-90" : ""
+                  topupsOpen || topupsHovered ? "rotate-90" : ""
                 }`}
               >
                 ▸
               </span>
             </button>
-            {topupsOpen ? (
+            {topupsOpen || topupsHovered ? (
               <div className="mt-1 ml-9 space-y-1 border-l border-white/10 pl-2">
                 <Link href="/topups" className={subLinkClass(pendingActive)}>
                   Pending
