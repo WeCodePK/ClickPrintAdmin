@@ -4,16 +4,36 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/components/auth-provider";
 import type { ListShopsResponse, Shop } from "@/lib/types";
-import { DEMO_METRICS } from "@/lib/demo-data";
 import { StatCard } from "@/components/ui/stat-card";
 import { ShopIcon, EyeIcon, PencilIcon, TrashIcon, RefreshIcon } from "@/components/icons";
 import { Modal } from "@/components/ui/modal";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from "recharts";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
+// ── Types ────────────────────────────────────────────────────────────────────
+interface ShopStats {
+  shops: number;
+  online: number;
+  offline: number;
+  disabled: number;
+}
+
+interface Job {
+  _id: string;
+  shop?: { _id: string; name: string };
+  [key: string]: unknown;
+}
+
+const COLORS = {
+  online: "var(--color-accent)",
+  offline: "var(--color-warning)",
+  disabled: "var(--color-danger)"
+};
+
 function StatusPill({ online, disabled }: { online?: boolean; disabled?: boolean }) {
-  if (disabled) return <span className="rounded-md bg-danger-soft px-2 py-0.5 text-xs font-medium text-danger">Disabled</span>;
   if (online) return <span className="rounded-md bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent">Online</span>;
+  if (disabled) return <span className="rounded-md bg-danger-soft px-2 py-0.5 text-xs font-medium text-danger">Disabled</span>;
   return <span className="rounded-md bg-surface-muted px-2 py-0.5 text-xs font-medium text-muted">Offline</span>;
 }
 
@@ -39,6 +59,8 @@ function extractShops(data: ListShopsResponse & Record<string, unknown>): Shop[]
 export function ShopsList() {
   const { token } = useAuth();
   const [shops, setShops] = useState<Shop[]>([]);
+  const [shopStats, setShopStats] = useState<ShopStats | null>(null);
+  const [mostActiveShop, setMostActiveShop] = useState<string>("—");
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [loading, setLoading] = useState(true);
@@ -70,19 +92,46 @@ export function ShopsList() {
     setError(null);
 
     try {
-      const response = await fetch("/api/shops", {
-        headers: { Authorization: `Bearer ${token}` },
-        cache: "no-store",
-      });
-      const data = await response.json();
+      // Fetch shops list, stats, and jobs in parallel
+      const [shopsRes, statsRes, jobsRes] = await Promise.all([
+        fetch("/api/shops",       { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }),
+        fetch("/api/stats/shops", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }),
+        fetch("/api/jobs",        { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }),
+      ]);
 
-      if (!response.ok || data.success === false) {
-        setError(data.error || data.message || "Failed to load shops");
+      const [shopsData, statsData, jobsData] = await Promise.all([
+        shopsRes.json(),
+        statsRes.json(),
+        jobsRes.json(),
+      ]);
+
+      if (!shopsRes.ok || shopsData.success === false) {
+        setError(shopsData.error || shopsData.message || "Failed to load shops");
         setShops([]);
-        return;
+      } else {
+        setShops(extractShops(shopsData));
       }
 
-      setShops(extractShops(data));
+      // Shop stats from dedicated endpoint
+      if (statsData.success && statsData.data) {
+        setShopStats(statsData.data as ShopStats);
+      }
+
+      // Calculate most active shop from jobs
+      if (jobsData.success && Array.isArray(jobsData.data?.jobs)) {
+        const jobs = jobsData.data.jobs as Job[];
+        const countByShop: Record<string, { name: string; count: number }> = {};
+        for (const job of jobs) {
+          if (job.shop?._id) {
+            if (!countByShop[job.shop._id]) {
+              countByShop[job.shop._id] = { name: job.shop.name, count: 0 };
+            }
+            countByShop[job.shop._id].count++;
+          }
+        }
+        const topShop = Object.values(countByShop).sort((a, b) => b.count - a.count)[0];
+        setMostActiveShop(topShop ? `${topShop.name} (${topShop.count})` : "—");
+      }
     } catch {
       setError("Network error while loading shops");
       setShops([]);
@@ -114,11 +163,21 @@ export function ShopsList() {
     setPage(1);
   }, [query, statusFilter]);
 
-  const stats = useMemo(() => {
-    const total = shops.length;
-    const online = shops.filter(s => s.isOnline && !s.isDisabled).length;
-    return { total, online };
-  }, [shops]);
+  // Derive display stats — prefer the dedicated stats API, fall back to local computation
+  const displayStats = useMemo(() => {
+    if (shopStats) return shopStats;
+    const total    = shops.length;
+    const online   = shops.filter(s => s.isOnline && !s.isDisabled).length;
+    const disabled = shops.filter(s => s.isDisabled).length;
+    const offline  = total - online - disabled;
+    return { shops: total, online, offline, disabled };
+  }, [shopStats, shops]);
+
+  const chartData = [
+    { name: 'Online', value: displayStats.online, color: COLORS.online },
+    { name: 'Offline', value: displayStats.offline, color: COLORS.offline },
+    { name: 'Disabled', value: displayStats.disabled, color: COLORS.disabled },
+  ].filter(d => d.value > 0);
 
   const totalPages = Math.ceil(filtered.length / pageSize) || 1;
   const paginatedData = filtered.slice((page - 1) * pageSize, page * pageSize);
@@ -242,11 +301,43 @@ export function ShopsList() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <StatCard label="Total Active Shops" value={stats.total} icon={<ShopIcon />} accentColor="accent" />
-        <StatCard label="Online Shops" value={stats.online} accentColor="print-request" />
-        <StatCard label="Most Active Shop" value={DEMO_METRICS.mostActiveShopName} isDemo />
-        <StatCard label="New Shops (30d)" value={DEMO_METRICS.shopsAddedLast30Days} isDemo />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 grid grid-cols-2 sm:grid-cols-3 gap-4">
+          <StatCard label="Total Shops" value={displayStats.shops} icon={<ShopIcon />} accentColor="accent" />
+          <StatCard label="Most Active" value={mostActiveShop.includes("(") ? mostActiveShop.split(" (")[0] : mostActiveShop} accentColor="print-request" />
+          <StatCard label="Online" value={displayStats.online} accentColor="accent" />
+          <StatCard label="Offline" value={displayStats.offline} accentColor="warning" />
+          <StatCard label="Disabled" value={displayStats.disabled} accentColor="danger" />
+        </div>
+        <div className="bg-surface rounded-xl border border-border p-4 shadow-sm flex flex-col">
+          <h3 className="text-sm font-medium text-muted mb-2">Status Breakdown</h3>
+          <div className="flex-1 min-h-[160px]">
+            {chartData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={chartData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={60} stroke="none" startAngle={90} endAngle={-270}>
+                    {chartData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
+                  </Pie>
+                  <RechartsTooltip contentStyle={{ borderRadius: '8px', border: '1px solid var(--color-border)' }} />
+                  <Legend 
+                    content={() => (
+                      <ul className="flex flex-wrap justify-center gap-4 text-sm mt-2">
+                        {chartData.map((entry, index) => (
+                          <li key={`item-${index}`} className="flex items-center gap-1.5">
+                            <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: entry.color }}></span>
+                            <span className="text-muted">{entry.name}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex h-full items-center justify-center text-sm text-muted">No data available</div>
+            )}
+          </div>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
