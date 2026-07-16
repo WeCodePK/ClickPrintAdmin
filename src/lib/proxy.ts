@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { backendUrl } from "@/lib/api-config";
 
-async function proxyJson(request: Request, path: string, init?: RequestInit) {
+type ProxyInit = RequestInit & { duplex?: "half" };
+
+async function proxyJson(request: Request, path: string, init?: ProxyInit) {
   const authHeader = request.headers.get("authorization");
 
   try {
@@ -12,7 +14,7 @@ async function proxyJson(request: Request, path: string, init?: RequestInit) {
         ...(authHeader ? { Authorization: authHeader } : {}),
         ...(init?.headers ?? {}),
       },
-    });
+    } as RequestInit);
 
     const raw = await upstream.text();
     let data: unknown = {};
