@@ -6,6 +6,9 @@
   "compatibility_flags": [
     "nodejs_compat"
   ],
+  "vars": {
+    "API_HOST": "https://clickprintbackend.wckd.pk"
+  },
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"
