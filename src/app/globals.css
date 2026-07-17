@@ -44,6 +44,9 @@
   --color-nav-inactive: var(--nav-inactive);
   --color-credit-wallet: var(--credit-wallet);
   --color-print-request: var(--print-request);
+  --color-white: #FFFFFF;
+  --color-black: #000000;
+  --color-transparent: transparent;
   --font-sans: var(--font-sans);
   --font-display: var(--font-display);
 }

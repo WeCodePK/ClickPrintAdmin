@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useAuth } from "@/components/auth-provider";
 import type { ListShopsResponse, Shop } from "@/lib/types";
 import { StatCard } from "@/components/ui/stat-card";
-import { ShopIcon, EyeIcon, PencilIcon, TrashIcon, RefreshIcon } from "@/components/icons";
+import { ShopIcon, EyeIcon, PencilIcon, TrashIcon, RefreshIcon, PlusIcon } from "@/components/icons";
 import { Modal } from "@/components/ui/modal";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from "recharts";
 import jsPDF from "jspdf";
@@ -287,14 +287,14 @@ export function ShopsList() {
       <div className="flex justify-end items-center gap-2 -mt-16 sm:-mt-20 relative z-10 mb-4">
         <Link
           href="/shops/create"
-          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover transition shadow-sm flex items-center gap-2"
+          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium !text-white hover:bg-accent-hover transition shadow-sm flex items-center gap-2"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
+          <PlusIcon className="w-4 h-4" />
           Create Shop
         </Link>
         <button 
           onClick={() => void load()} 
-          className="rounded-lg border border-border bg-surface p-2 text-sm font-medium hover:bg-surface-muted transition shadow-sm text-muted hover:text-foreground"
+          className="rounded-lg border border-border bg-surface p-2 text-sm  font-medium hover:bg-surface-muted transition shadow-sm text-muted hover:text-foreground"
           title="Refresh Data"
         >
           <RefreshIcon className="w-5 h-5" />

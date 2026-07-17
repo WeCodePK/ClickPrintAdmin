@@ -317,7 +317,7 @@ export function CreateShopForm({
         <button
           type="submit"
           disabled={isSubmitting}
-          className="rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+          className="px-4 py-2 bg-accent text-white rounded-lg text-sm font-medium hover:bg-accent-hover transition disabled:opacity-50"
         >
           {isSubmitting ? "Creating…" : "Create shop"}
         </button>
