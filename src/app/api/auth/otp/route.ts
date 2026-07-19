@@ -21,7 +21,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const { number, actor } = body as Record<string, unknown>;
+  const { number } = body as Record<string, unknown>;
 
   if (typeof number !== "string" || !number.trim()) {
     return NextResponse.json(
@@ -43,12 +43,17 @@ export async function POST(request: Request) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        actor: typeof actor === "string" ? actor : "user",
         number: normalized,
+        intent : "admin"
       }),
     });
 
+    const raw = await upstream.text();
     const data = await upstream.json().catch(() => ({}));
+    console.log("backend response", {
+      status: upstream.status,
+      body: raw
+    })
     return NextResponse.json(
       {
         ...data,
@@ -57,8 +62,7 @@ export async function POST(request: Request) {
       { status: upstream.status },
     );
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Failed to reach backend";
+    const message = error instanceof Error ? error.message : "Failed to reach backend";
     return NextResponse.json(
       { success: false, error: message },
       { status: 502 },

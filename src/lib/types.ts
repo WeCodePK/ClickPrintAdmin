@@ -48,6 +48,8 @@ export interface AuthProfile {
   balance?: number;
   name?: string;
   pushTokens?: string[];
+  isAdmin?: boolean;
+  isDisabled?: boolean;
 }
 
 export interface AuthUser extends AuthProfile {
@@ -66,8 +68,8 @@ export interface OtpVerifyResponse {
   message: string;
   data: {
     token: string;
-    profile: AuthProfile;
-    shop: Shop | null;
+    user: AuthProfile;
+    shops: Shop[];
   };
 }
 

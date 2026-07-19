@@ -49,11 +49,17 @@ export async function POST(request: Request) {
       }),
     });
 
-    const data = await upstream.json().catch(() => ({}));
-    return NextResponse.json(data, { status: upstream.status });
+    const data = await upstream.json();
+
+    console.log("VERIFY RESPONSE:", data);
+
+    return NextResponse.json(data, {
+      status: upstream.status,
+    });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to reach backend";
+
     return NextResponse.json(
       { success: false, error: message },
       { status: 502 },
