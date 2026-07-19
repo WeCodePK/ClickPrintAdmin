@@ -7,7 +7,6 @@ import { DEMO_USERS, DEMO_METRICS } from "@/lib/demo-data";
 import { StatCard } from "@/components/ui/stat-card";
 import { UsersIcon, EyeIcon, PencilIcon, TrashIcon, RefreshIcon, ShieldIcon, CrownIcon, PlusIcon } from "@/components/icons";
 import { Modal } from "@/components/ui/modal";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
 interface UserStats {
   users: number;
@@ -21,7 +20,9 @@ export function UsersPanel() {
   const [tab, setTab] = useState<"users" | "admins">("users");
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [admins, setAdmins] = useState<Admin[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [usersLoading, setUsersLoading] = useState(true);
+  const [adminsLoading, setAdminsLoading] = useState(true);
+  const loading = tab === "users" ? usersLoading : adminsLoading;
   const [error, setError] = useState<string | null>(null);
   const [isDemo, setIsDemo] = useState(false);
   const [search, setSearch] = useState("");
@@ -29,6 +30,7 @@ export function UsersPanel() {
 
   const [userStats, setUserStats] = useState<UserStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
+  const [showStats, setShowStats] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createUserForm, setCreateUserForm] = useState({ name: "", number: "" });
   const [createUserError, setCreateUserError] = useState<string | null>(null);
@@ -101,9 +103,40 @@ export function UsersPanel() {
     }
   }, [token]);
 
+  const loadAdmins = useCallback(async () => {
+    if (!token) return;
+    setAdminsLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/admins", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data: ListAdminsResponse = await response.json();
+      
+
+      if (data.success === false || !data.data?.admins) {
+        setAdmins([]);
+        setError("Failed to load admins");
+      } else {
+        setAdmins(data.data.admins);
+      }
+    } catch (err) {
+      setError("Network error loading admins");
+      setAdmins([]);
+    } finally {
+      setAdminsLoading(false);
+    }
+  }, [token]);
+
   const load = useCallback(async () => {
     if (!token) return;
-    setLoading(true);
+    setUsersLoading(true);
     setError(null);
     setIsDemo(false);
 
@@ -122,47 +155,52 @@ export function UsersPanel() {
         setUsers(DEMO_USERS);
         setIsDemo(true);
       } else {
-        console.log(data.data);
         setUsers(data.data.users);
       }
     } catch {
       setUsers(DEMO_USERS);
       setIsDemo(true);
     } finally {
-      setLoading(false);
+      setUsersLoading(false);
     }
   }, [token]);
 
   useEffect(() => {
     void load();
     void loadStats();
-  }, [load, loadStats]);
+    void loadAdmins();
+  }, [load, loadStats, loadAdmins]);
 
   // Reset page when filters change
   useEffect(() => {
     setPage(1);
   }, [search, filterRole]);
 
+  const usersWithRoles = useMemo(() => {
+    const adminIds = new Set(
+      admins.map(admin => {
+        const adminIdObj = admin._id as any;
+        return adminIdObj?._id || adminIdObj?.$oid || (typeof adminIdObj === 'string' ? adminIdObj : '');
+      }).filter(Boolean)
+    );
+    return users.map(u => ({
+      ...u,
+      isAdmin: u.isAdmin || adminIds.has(u._id)
+    }));
+  }, [users, admins]);
+
   const visibleUsers = useMemo(() => {
-    return users.filter(u => {
+    return usersWithRoles.filter(u => {
       const matchSearch = u.name?.toLowerCase().includes(search.toLowerCase()) ||
                           u.number?.toLowerCase().includes(search.toLowerCase());
       const matchRole = filterRole === "all" ? true :
                         filterRole === "admin" ? u.isAdmin : !u.isAdmin;
       return matchSearch && matchRole;
     });
-  }, [users, search, filterRole]);
+  }, [usersWithRoles, search, filterRole]);
 
   const totalPages = Math.ceil(visibleUsers.length / pageSize) || 1;
   const paginatedData = visibleUsers.slice((page - 1) * pageSize, page * pageSize);
-
-  const chartData = useMemo(() => {
-    return users
-      .slice()
-      .sort((a, b) => (b.totalPrints || 0) - (a.totalPrints || 0))
-      .slice(0, 5)
-      .map(u => ({ name: u.name || u.number, prints: u.totalPrints || 0 }));
-  }, [users]);
 
   const openModal = (user: AdminUser, mode: "view" | "edit") => {
     setSelectedUser(user);
@@ -300,37 +338,6 @@ export function UsersPanel() {
     }
   };
 
-  const loadAdmins = useCallback(async () => {
-    if (!token) return;
-    setLoading(true);
-    setError(null);
-
-    try {
-      const response = await fetch("/api/admins", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const data: ListAdminsResponse = await response.json();
-      console.log("Admins data:", data);
-
-      if (data.success === false || !data.data?.admins) {
-        setAdmins([]);
-        setError("Failed to load admins");
-      } else {
-        setAdmins(data.data.admins);
-      }
-    } catch (err) {
-      setError("Network error loading admins");
-      setAdmins([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [token]);
-
   const handleAppointAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!token || !appointUserId) return;
@@ -404,32 +411,34 @@ export function UsersPanel() {
 
   return (
     <div className="space-y-6">
-      {/* Tab switcher */}
-      <div className="flex gap-2 border-b border-border">
-        <button
-          onClick={() => setTab("users")}
-          className={`px-4 py-2 font-medium border-b-2 transition ${
-            tab === "users"
-              ? "border-accent text-accent"
-              : "border-transparent text-muted hover:text-foreground"
-          }`}
-        >
-          Users
-        </button>
-        <button
-          onClick={() => setTab("admins")}
-          className={`px-4 py-2 font-medium border-b-2 transition ${
-            tab === "admins"
-              ? "border-accent text-accent"
-              : "border-transparent text-muted hover:text-foreground"
-          }`}
-        >
-          Admins
-        </button>
-      </div>
+      {/* Header section with tabs and actions */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4 border-b border-border">
+        {/* Tab switcher */}
+        <div className="flex gap-2 -mb-[1px]">
+          <button
+            onClick={() => setTab("users")}
+            className={`px-4 py-2 font-medium border-b-2 transition ${
+              tab === "users"
+                ? "border-accent text-accent"
+                : "border-transparent text-muted hover:text-foreground"
+            }`}
+          >
+            Users
+          </button>
+          <button
+            onClick={() => setTab("admins")}
+            className={`px-4 py-2 font-medium border-b-2 transition ${
+              tab === "admins"
+                ? "border-accent text-accent"
+                : "border-transparent text-muted hover:text-foreground"
+            }`}
+          >
+            Admins
+          </button>
+        </div>
 
-      {/* Top right actions */}
-      <div className="flex justify-end items-center gap-2 -mt-16 sm:-mt-20 relative z-10 mb-4">
+        {/* Top right actions */}
+        <div className="flex items-center gap-2 pb-1 sm:pb-0">
         {tab === "users" && (
           <button
             onClick={() => setShowCreateModal(true)}
@@ -449,37 +458,48 @@ export function UsersPanel() {
           </button>
         )}
         <button
-          onClick={() => tab === "users" ? void load() : void loadAdmins()}
+          onClick={() => {
+            if (tab === "users") {
+              void load();
+              void loadAdmins();
+            } else {
+              void loadAdmins();
+            }
+          }}
           className="rounded-lg border border-border bg-surface p-2 text-sm font-medium hover:bg-surface-muted transition shadow-sm text-muted hover:text-foreground"
           title="Refresh Data"
         >
           <RefreshIcon className="w-5 h-5" />
         </button>
       </div>
+    </div>
 
       {tab === "users" && (
-        <>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard label="Total Users" value={statsLoading ? "—" : userStats?.users || 0} icon={<UsersIcon />} accentColor="accent" isDemo={isDemo} />
-            <StatCard label="Admins" value={statsLoading ? "—" : userStats?.admins || 0} icon={<ShieldIcon />} accentColor="print-request" isDemo={isDemo} />
-            <StatCard label="Owners" value={statsLoading ? "—" : userStats?.owners || 0} icon={<CrownIcon />} accentColor="credit-wallet" isDemo={isDemo} />
-            <StatCard label="App Users" value={statsLoading ? "—" : userStats?.appUsers || 0} icon={<UsersIcon />} accentColor="accent" isDemo={isDemo} />
-          </div>
+        <div className="mb-6">
+          <button
+            onClick={() => setShowStats(!showStats)}
+            className="text-sm font-medium text-accent hover:text-accent-hover transition flex items-center gap-1 mb-4"
+          >
+            {showStats ? "Hide Stats" : "Show Stats"}
+            <svg
+              className={`w-4 h-4 transition-transform ${showStats ? "rotate-180" : ""}`}
+              fill="none" viewBox="0 0 24 24" stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
 
-          <div className="bg-surface rounded-xl border border-border p-4 shadow-sm">
-            <h3 className="text-sm font-medium text-muted mb-4">Top Users by Prints</h3>
-            <div className="h-48 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData}>
-                  <XAxis dataKey="name" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis fontSize={12} tickLine={false} axisLine={false} />
-                  <Tooltip cursor={{ fill: 'var(--color-surface-muted)' }} contentStyle={{ borderRadius: '8px', border: '1px solid var(--color-border)' }} />
-                  <Bar dataKey="prints" fill="var(--color-accent)" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+          {showStats && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <StatCard label="Total Users" value={statsLoading ? "—" : userStats?.users || 0} icon={<UsersIcon />} accentColor="accent" isDemo={isDemo} />
+                <StatCard label="Admins" value={statsLoading ? "—" : userStats?.admins || 0} icon={<ShieldIcon />} accentColor="print-request" isDemo={isDemo} />
+                <StatCard label="Owners" value={statsLoading ? "—" : userStats?.owners || 0} icon={<CrownIcon />} accentColor="credit-wallet" isDemo={isDemo} />
+                <StatCard label="App Users" value={statsLoading ? "—" : userStats?.appUsers || 0} icon={<UsersIcon />} accentColor="accent" isDemo={isDemo} />
+              </div>
             </div>
-          </div>
-        </>
+          )}
+        </div>
       )}
 
       {tab === "admins" && (
@@ -813,11 +833,13 @@ export function UsersPanel() {
                   required
                 >
                   <option value="">Choose a user...</option>
-                  {users.map(user => (
-                    <option key={user._id} value={user._id}>
-                      {user.name || user.number}
-                    </option>
-                  ))}
+                  {usersWithRoles
+                    .filter(user => !user.isAdmin)
+                    .map(user => (
+                      <option key={user._id} value={user._id}>
+                        {user.name || user.number}
+                      </option>
+                    ))}
                 </select>
               </div>
 

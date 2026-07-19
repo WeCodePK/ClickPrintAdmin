@@ -11,7 +11,7 @@ export default function DraftsPage() {
         <h1 className="mt-2 font-[family-name:var(--font-display)] text-3xl tracking-tight sm:text-4xl">
           Print drafts
         </h1>
-        <p className="mt-2 text-sm text-muted">
+        <p className="mt-2 mb-10 text-sm text-muted">
           View and manage user print drafts.
         </p>
       </header>

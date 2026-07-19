@@ -141,7 +141,7 @@ export function TopUpsPanel() {
         setTopups([]);
         return;
       }
-      setTopups(extractTopups(data.stats));
+      setTopups(extractTopups(data));
     } catch {
       setError("Network error while loading top-ups");
       setTopups([]);
