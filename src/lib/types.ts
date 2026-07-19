@@ -125,3 +125,122 @@ export interface PatchUserInput {
   isAdmin?: boolean;
   isDisabled?: boolean;
 }
+
+export type DraftStatus = "drafts" | "ready" | "complete" | "incomplete";
+
+export interface DraftUser {
+  _id: string;
+  number: string;
+  name: string;
+}
+
+export interface Draft {
+  _id: string;
+  status: DraftStatus | string;
+  createdAt: string;
+  createdBy?: DraftUser | string | null;
+}
+
+export interface ListDraftsResponse {
+  success: boolean;
+  message?: string;
+  data?: {
+    drafts?: Draft[];
+  };
+}
+
+export interface DraftStatsData {
+  drafts: number;
+  ready: number;
+  complete: number;
+  incomplete: number;
+}
+
+export type JobStatus = "submitted" | "queued" | "printing" | "cancelled" | "completed" | "failed";
+
+export interface JobFile {
+  file: string;
+  settings?: Record<string, unknown>;
+}
+
+export interface Job {
+  _id: string;
+  status: JobStatus | string;
+  createdBy: string | { _id: string; number: string; name: string };
+  shop: string | Shop;
+  files?: JobFile[];
+  cost?: number;
+  createdAt: string;
+}
+
+export interface ListJobsResponse {
+  success: boolean;
+  message?: string;
+  data?: {
+    jobs?: Job[];
+  };
+}
+
+export interface JobStatsData {
+  stats: {
+    jobs: number;
+    printing: number;
+    queued: number;
+    submitted: number;
+  };
+}
+
+export type HistoryStatus = "cancelled" | "failed" | "completed";
+
+export interface HistoryEntry {
+  _id: string;
+  status: HistoryStatus | string;
+  createdBy: string | { _id: string; number: string; name: string };
+  shop: string | Shop;
+  files?: JobFile[];
+  cost?: number;
+  createdAt: string;
+}
+
+export interface ListHistoryResponse {
+  success: boolean;
+  message?: string;
+  data?: {
+    history?: HistoryEntry[];
+  };
+}
+
+export interface HistoryStatsData {
+  stats: {
+    jobs: number;
+    cancelled: number;
+    failed: number;
+    completed: number;
+  };
+}
+
+export interface Admin {
+  _id: AdminUser | string;
+  appointedBy: AdminUser | string;
+  appointedAt: string;
+}
+
+export interface ListAdminsResponse {
+  success: boolean;
+  message?: string;
+  data?: {
+    admins?: Admin[];
+  };
+}
+
+export interface AppointAdminInput {
+  user: string;
+}
+
+export interface AppointAdminResponse {
+  success: boolean;
+  message?: string;
+  data?: {
+    admin?: Admin;
+  };
+}

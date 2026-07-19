@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
-import { DashboardIcon, UsersIcon, ShopIcon, TopupIcon, MenuIcon } from "@/components/icons";
+import { DashboardIcon, UsersIcon, ShopIcon, TopupIcon, MenuIcon, DocumentIcon, PrinterIcon } from "@/components/icons";
 
 function SidebarNav() {
   const pathname = usePathname();
@@ -103,6 +103,30 @@ function SidebarNav() {
               {!collapsed && <span className="text-xs opacity-50">4.</span>}
               <TopupIcon className="w-5 h-5" />
               {!collapsed && <span>Top-ups</span>}
+            </div>
+          </Link>
+
+          <Link
+            href="/drafts"
+            className={linkClass(pathname.startsWith("/drafts"))}
+            title={collapsed ? "Drafts" : undefined}
+          >
+            <div className="flex items-center gap-3">
+              {!collapsed && <span className="text-xs opacity-50">5.</span>}
+              <DocumentIcon className="w-5 h-5" />
+              {!collapsed && <span>Drafts</span>}
+            </div>
+          </Link>
+
+          <Link
+            href="/jobs"
+            className={linkClass(pathname.startsWith("/jobs"))}
+            title={collapsed ? "Jobs" : undefined}
+          >
+            <div className="flex items-center gap-3">
+              {!collapsed && <span className="text-xs opacity-50">6.</span>}
+              <PrinterIcon className="w-5 h-5" />
+              {!collapsed && <span>Jobs</span>}
             </div>
           </Link>
         </nav>

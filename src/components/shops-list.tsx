@@ -99,11 +99,14 @@ export function ShopsList() {
         fetch("/api/jobs",        { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }),
       ]);
 
+      
       const [shopsData, statsData, jobsData] = await Promise.all([
         shopsRes.json(),
         statsRes.json(),
         jobsRes.json(),
       ]);
+
+      
 
       if (!shopsRes.ok || shopsData.success === false) {
         setError(shopsData.error || shopsData.message || "Failed to load shops");
@@ -112,9 +115,11 @@ export function ShopsList() {
         setShops(extractShops(shopsData));
       }
 
+      
       // Shop stats from dedicated endpoint
       if (statsData.success && statsData.data) {
-        setShopStats(statsData.data as ShopStats);
+        console.log("backend shops stats", statsData.data)
+        setShopStats(statsData.data.stats as ShopStats);
       }
 
       // Calculate most active shop from jobs
