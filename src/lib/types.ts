@@ -260,3 +260,43 @@ export interface AppointAdminResponse {
     admin?: Admin;
   };
 }
+
+export interface OwnerRef {
+  _id: string;
+  name?: string;
+  number?: string;
+}
+
+export interface OwnerShopRef {
+  _id: string;
+  name?: string;
+}
+
+export interface Owner {
+  _id: string;
+  user: OwnerRef | string;
+  shop: OwnerShopRef | string;
+  appointedBy: OwnerRef | string;
+  appointedByAdmin: boolean;
+  appointedAt: string;
+}
+
+export interface ListOwnersResponse {
+  success: boolean;
+  message?: string;
+  data?: {
+    owners?: Owner[];
+  };
+}
+
+export interface AppointOwnerInput {
+  user: string;
+}
+
+export interface AppointOwnerResponse {
+  success: boolean;
+  message?: string;
+  data?: {
+    owner?: Owner;
+  };
+}

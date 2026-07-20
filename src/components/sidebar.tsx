@@ -6,11 +6,23 @@ import { Suspense, useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { DashboardIcon, UsersIcon, ShopIcon, TopupIcon, MenuIcon, DocumentIcon, PrinterIcon } from "@/components/icons";
 
+const USER_SUB_LINKS = [
+  { href: "/users", label: "All" },
+  { href: "/users/admins", label: "Admins" },
+  { href: "/users/owners", label: "Owners" },
+];
+
 function SidebarNav() {
   const pathname = usePathname();
   const router = useRouter();
   const { user, isAdmin, logout } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
+
+  const usersActive = pathname.startsWith("/users");
+  // `null` means "follow the route" — the group auto-opens under /users until
+  // the user explicitly toggles it.
+  const [usersToggled, setUsersToggled] = useState<boolean | null>(null);
+  const usersOpen = usersToggled ?? usersActive;
 
   const linkClass = (active: boolean) =>
     `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
@@ -70,17 +82,51 @@ function SidebarNav() {
             </div>
           </Link>
 
-          <Link
-            href="/users"
-            className={linkClass(pathname.startsWith("/users"))}
-            title={collapsed ? "Users" : undefined}
-          >
-            <div className="flex items-center gap-3">
-              {!collapsed && <span className="text-xs opacity-50">2.</span>}
-              <UsersIcon className="w-5 h-5" />
-              {!collapsed && <span>Users</span>}
+          {collapsed ? (
+            <Link href="/users" className={linkClass(usersActive)} title="Users">
+              <div className="flex items-center gap-3">
+                <UsersIcon className="w-5 h-5" />
+              </div>
+            </Link>
+          ) : (
+            <div>
+              <button
+                type="button"
+                onClick={() => setUsersToggled(!usersOpen)}
+                className={groupBtn(usersActive)}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-xs opacity-50">2.</span>
+                  <UsersIcon className="w-5 h-5" />
+                  <span>Users</span>
+                </div>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className={`transition-transform ${usersOpen ? "rotate-180" : ""}`}
+                >
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </button>
+
+              {usersOpen && (
+                <div className="mt-1 ml-6 flex flex-col gap-1 border-l border-white/10 pl-3">
+                  {USER_SUB_LINKS.map(({ href, label }) => (
+                    <Link key={href} href={href} className={subLinkClass(pathname === href)}>
+                      {label}
+                    </Link>
+                  ))}
+                </div>
+              )}
             </div>
-          </Link>
+          )}
 
           <Link
             href="/shops"

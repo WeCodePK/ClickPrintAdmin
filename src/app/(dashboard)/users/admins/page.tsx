@@ -1,6 +1,6 @@
 import { UsersPanel } from "@/components/users-panel";
 
-export default function UsersPage() {
+export default function AdminsPage() {
   return (
     <div className="space-y-6">
       <header>
@@ -8,14 +8,14 @@ export default function UsersPage() {
           Users
         </p>
         <h1 className="mt-2 font-[family-name:var(--font-display)] text-3xl tracking-tight sm:text-4xl">
-          All users
+          Admins
         </h1>
         <p className="mt-2 mb-10 text-sm text-muted">
-          Browse every platform user, their balance, and print activity.
+          Manage who holds console-wide administrative access.
         </p>
       </header>
 
-      <UsersPanel tab="users" />
+      <UsersPanel tab="admins" />
     </div>
   );
 }

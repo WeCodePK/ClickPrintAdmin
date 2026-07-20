@@ -2,11 +2,19 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
-import { AdminUser, Admin, ListAdminsResponse } from "@/lib/types";
+import { AdminUser, Admin, ListAdminsResponse, Owner, ListOwnersResponse, Shop } from "@/lib/types";
 import { DEMO_USERS, DEMO_METRICS } from "@/lib/demo-data";
 import { StatCard } from "@/components/ui/stat-card";
-import { UsersIcon, EyeIcon, PencilIcon, TrashIcon, RefreshIcon, ShieldIcon, CrownIcon, PlusIcon } from "@/components/icons";
+import { UsersIcon, PencilIcon, TrashIcon, RefreshIcon, ShieldIcon, CrownIcon, PlusIcon, ShopIcon, PowerIcon } from "@/components/icons";
 import { Modal } from "@/components/ui/modal";
+
+function formatWhen(iso?: string) {
+  if (!iso) return "—";
+  return new Intl.DateTimeFormat("en-PK", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(iso));
+}
 
 interface UserStats {
   users: number;
@@ -15,14 +23,18 @@ interface UserStats {
   appUsers: number;
 }
 
-export function UsersPanel() {
+export type UsersTab = "users" | "admins" | "owners";
+
+export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
   const { token } = useAuth();
-  const [tab, setTab] = useState<"users" | "admins">("users");
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [admins, setAdmins] = useState<Admin[]>([]);
+  const [owners, setOwners] = useState<Owner[]>([]);
+  const [shops, setShops] = useState<Shop[]>([]);
   const [usersLoading, setUsersLoading] = useState(true);
   const [adminsLoading, setAdminsLoading] = useState(true);
-  const loading = tab === "users" ? usersLoading : adminsLoading;
+  const [ownersLoading, setOwnersLoading] = useState(true);
+  const loading = tab === "users" ? usersLoading : tab === "admins" ? adminsLoading : ownersLoading;
   const [error, setError] = useState<string | null>(null);
   const [isDemo, setIsDemo] = useState(false);
   const [search, setSearch] = useState("");
@@ -30,7 +42,6 @@ export function UsersPanel() {
 
   const [userStats, setUserStats] = useState<UserStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
-  const [showStats, setShowStats] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createUserForm, setCreateUserForm] = useState({ name: "", number: "" });
   const [createUserError, setCreateUserError] = useState<string | null>(null);
@@ -38,12 +49,17 @@ export function UsersPanel() {
 
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
   const [selectedAdmin, setSelectedAdmin] = useState<Admin | null>(null);
-  const [modalMode, setModalMode] = useState<"view" | "edit" | "appoint" | "dismiss" | null>(null);
+  const [selectedOwner, setSelectedOwner] = useState<Owner | null>(null);
+  const [modalMode, setModalMode] = useState<
+    "edit" | "toggle" | "delete" | "appoint" | "dismiss" | "appointOwner" | "removeOwner" | null
+  >(null);
 
   // Form state
   const [editName, setEditName] = useState("");
   const [editNumber, setEditNumber] = useState("");
   const [appointUserId, setAppointUserId] = useState("");
+  const [appointOwnerShopId, setAppointOwnerShopId] = useState("");
+  const [appointOwnerUserId, setAppointOwnerUserId] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -55,8 +71,6 @@ export function UsersPanel() {
   const [cols, setCols] = useState({
     name: true,
     number: true,
-    balance: true,
-    prints: true,
     status: true,
     enabled: true,
     actions: true
@@ -134,6 +148,58 @@ export function UsersPanel() {
     }
   }, [token]);
 
+  const loadOwners = useCallback(async () => {
+    if (!token) return;
+    setOwnersLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/owners", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data: ListOwnersResponse = await response.json();
+
+      if (data.success === false || !data.data?.owners) {
+        setOwners([]);
+        setError("Failed to load owners");
+      } else {
+        setOwners(data.data.owners);
+      }
+    } catch {
+      setError("Network error loading owners");
+      setOwners([]);
+    } finally {
+      setOwnersLoading(false);
+    }
+  }, [token]);
+
+  const loadShops = useCallback(async () => {
+    if (!token) return;
+
+    try {
+      const response = await fetch("/api/shops", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.success !== false && data.data?.shops) {
+        setShops(data.data.shops);
+      }
+    } catch {
+      setShops([]);
+    }
+  }, [token]);
+
   const load = useCallback(async () => {
     if (!token) return;
     setUsersLoading(true);
@@ -169,7 +235,8 @@ export function UsersPanel() {
     void load();
     void loadStats();
     void loadAdmins();
-  }, [load, loadStats, loadAdmins]);
+    void loadOwners();
+  }, [load, loadStats, loadAdmins, loadOwners]);
 
   // Reset page when filters change
   useEffect(() => {
@@ -199,10 +266,18 @@ export function UsersPanel() {
     });
   }, [usersWithRoles, search, filterRole]);
 
+  const ownedShopIds = useMemo(() => {
+    return new Set(
+      owners
+        .map(o => (typeof o.shop === "string" ? o.shop : o.shop?._id))
+        .filter(Boolean)
+    );
+  }, [owners]);
+
   const totalPages = Math.ceil(visibleUsers.length / pageSize) || 1;
   const paginatedData = visibleUsers.slice((page - 1) * pageSize, page * pageSize);
 
-  const openModal = (user: AdminUser, mode: "view" | "edit") => {
+  const openModal = (user: AdminUser, mode: "edit" | "toggle" | "delete") => {
     setSelectedUser(user);
     setModalMode(mode);
     setEditName(user.name || "");
@@ -213,6 +288,7 @@ export function UsersPanel() {
   const closeModal = () => {
     setModalMode(null);
     setSelectedUser(null);
+    setActionError(null);
   };
 
   const closeCreateModal = () => {
@@ -296,8 +372,9 @@ export function UsersPanel() {
     }
   };
 
-  const handleToggleDisable = async (user: AdminUser) => {
-    if (!token) return;
+  const handleToggleDisable = async () => {
+    const user = selectedUser;
+    if (!user || !token) return;
     setBusy(true);
     setActionError(null);
 
@@ -328,11 +405,40 @@ export function UsersPanel() {
         return;
       }
 
+      closeModal();
       void load();
       void loadStats();
     } catch (err) {
       console.error("Error toggling user status:", err);
       setActionError(`Error: ${err instanceof Error ? err.message : "Unknown error updating user status"}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!selectedUser || !token) return;
+    setBusy(true);
+    setActionError(null);
+
+    try {
+      const response = await fetch(`/api/users/${selectedUser._id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || data.success === false) {
+        setActionError(data.error || data.message || "Failed to delete user");
+      } else {
+        closeModal();
+        void load();
+        void loadStats();
+        void loadAdmins();
+      }
+    } catch {
+      setActionError("Network error calling DELETE /api/users/:id");
     } finally {
       setBusy(false);
     }
@@ -402,43 +508,85 @@ export function UsersPanel() {
     }
   };
 
+  const handleAppointOwner = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!token || !appointOwnerShopId || !appointOwnerUserId) return;
+    setBusy(true);
+    setActionError(null);
+
+    try {
+      const response = await fetch(`/api/owners/${appointOwnerShopId}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ user: appointOwnerUserId }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || data.success === false) {
+        setActionError(data.error || data.message || "Failed to appoint owner");
+      } else {
+        setModalMode(null);
+        setAppointOwnerShopId("");
+        setAppointOwnerUserId("");
+        void loadOwners();
+        void loadStats();
+      }
+    } catch {
+      setActionError("Network error appointing owner");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleRemoveOwner = async () => {
+    if (!selectedOwner || !token) return;
+    setBusy(true);
+    setActionError(null);
+
+    try {
+      const shopId = typeof selectedOwner.shop === "string" ? selectedOwner.shop : selectedOwner.shop?._id;
+      const userId = typeof selectedOwner.user === "string" ? selectedOwner.user : selectedOwner.user?._id;
+
+      const response = await fetch(`/api/owners/${shopId}/${userId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || data.success === false) {
+        setActionError(data.error || data.message || "Failed to remove owner");
+      } else {
+        setModalMode(null);
+        setSelectedOwner(null);
+        void loadOwners();
+        void loadStats();
+      }
+    } catch {
+      setActionError("Network error removing owner");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   // Conditionally load based on tab
   useEffect(() => {
     if (tab === "admins") {
       void loadAdmins();
+    } else if (tab === "owners") {
+      void loadOwners();
+      void loadShops();
     }
-  }, [tab, loadAdmins]);
+  }, [tab, loadAdmins, loadOwners, loadShops]);
 
   return (
     <div className="space-y-6">
-      {/* Header section with tabs and actions */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4 border-b border-border">
-        {/* Tab switcher */}
-        <div className="flex gap-2 -mb-[1px]">
-          <button
-            onClick={() => setTab("users")}
-            className={`px-4 py-2 font-medium border-b-2 transition ${
-              tab === "users"
-                ? "border-accent text-accent"
-                : "border-transparent text-muted hover:text-foreground"
-            }`}
-          >
-            Users
-          </button>
-          <button
-            onClick={() => setTab("admins")}
-            className={`px-4 py-2 font-medium border-b-2 transition ${
-              tab === "admins"
-                ? "border-accent text-accent"
-                : "border-transparent text-muted hover:text-foreground"
-            }`}
-          >
-            Admins
-          </button>
-        </div>
-
-        {/* Top right actions */}
-        <div className="flex items-center gap-2 pb-1 sm:pb-0">
+      {/* Top right actions */}
+      <div className="flex justify-end items-center gap-2 -mt-16 sm:-mt-20 relative z-10 mb-4">
         {tab === "users" && (
           <button
             onClick={() => setShowCreateModal(true)}
@@ -457,11 +605,23 @@ export function UsersPanel() {
             Appoint Admin
           </button>
         )}
+        {tab === "owners" && (
+          <button
+            onClick={() => { setActionError(null); setModalMode("appointOwner"); }}
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover transition shadow-sm flex items-center gap-2"
+          >
+            <PlusIcon className="w-4 h-4" />
+            Appoint Owner
+          </button>
+        )}
         <button
           onClick={() => {
             if (tab === "users") {
               void load();
               void loadAdmins();
+            } else if (tab === "owners") {
+              void loadOwners();
+              void loadShops();
             } else {
               void loadAdmins();
             }
@@ -472,39 +632,31 @@ export function UsersPanel() {
           <RefreshIcon className="w-5 h-5" />
         </button>
       </div>
-    </div>
 
       {tab === "users" && (
-        <div className="mb-6">
-          <button
-            onClick={() => setShowStats(!showStats)}
-            className="text-sm font-medium text-accent hover:text-accent-hover transition flex items-center gap-1 mb-4"
-          >
-            {showStats ? "Hide Stats" : "Show Stats"}
-            <svg
-              className={`w-4 h-4 transition-transform ${showStats ? "rotate-180" : ""}`}
-              fill="none" viewBox="0 0 24 24" stroke="currentColor"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-
-          {showStats && (
-            <div className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <StatCard label="Total Users" value={statsLoading ? "—" : userStats?.users || 0} icon={<UsersIcon />} accentColor="accent" isDemo={isDemo} />
-                <StatCard label="Admins" value={statsLoading ? "—" : userStats?.admins || 0} icon={<ShieldIcon />} accentColor="print-request" isDemo={isDemo} />
-                <StatCard label="Owners" value={statsLoading ? "—" : userStats?.owners || 0} icon={<CrownIcon />} accentColor="credit-wallet" isDemo={isDemo} />
-                <StatCard label="App Users" value={statsLoading ? "—" : userStats?.appUsers || 0} icon={<UsersIcon />} accentColor="accent" isDemo={isDemo} />
-              </div>
-            </div>
-          )}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard label="Total Users" value={statsLoading ? "—" : userStats?.users || 0} icon={<UsersIcon className="w-5 h-5" />} accentColor="accent" isDemo={isDemo} />
+          <StatCard label="Admins" value={statsLoading ? "—" : userStats?.admins || 0} icon={<ShieldIcon className="w-5 h-5" />} accentColor="print-request" isDemo={isDemo} />
+          <StatCard label="Owners" value={statsLoading ? "—" : userStats?.owners || 0} icon={<CrownIcon className="w-5 h-5" />} accentColor="credit-wallet" isDemo={isDemo} />
+          <StatCard label="App Users" value={statsLoading ? "—" : userStats?.appUsers || 0} icon={<UsersIcon className="w-5 h-5" />} accentColor="accent" isDemo={isDemo} />
         </div>
       )}
 
       {tab === "admins" && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
-          <StatCard label="Total Admins" value={loading ? "—" : admins.length} icon={<ShieldIcon />} accentColor="accent" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard label="Total Admins" value={loading ? "—" : admins.length} icon={<ShieldIcon className="w-5 h-5" />} accentColor="print-request" />
+          <StatCard label="Total Users" value={statsLoading ? "—" : userStats?.users || 0} icon={<UsersIcon className="w-5 h-5" />} accentColor="accent" />
+          <StatCard label="Owners" value={statsLoading ? "—" : userStats?.owners || 0} icon={<CrownIcon className="w-5 h-5" />} accentColor="credit-wallet" />
+          <StatCard label="App Users" value={statsLoading ? "—" : userStats?.appUsers || 0} icon={<UsersIcon className="w-5 h-5" />} accentColor="accent" />
+        </div>
+      )}
+
+      {tab === "owners" && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard label="Total Owners" value={loading ? "—" : owners.length} icon={<CrownIcon className="w-5 h-5" />} accentColor="credit-wallet" />
+          <StatCard label="Shops With Owners" value={loading ? "—" : ownedShopIds.size} icon={<ShopIcon className="w-5 h-5" />} accentColor="accent" colorValue />
+          <StatCard label="Shops Without Owners" value={loading ? "—" : Math.max(0, shops.length - ownedShopIds.size)} icon={<ShopIcon className="w-5 h-5" />} accentColor="danger" colorValue />
+          <StatCard label="Total Shops" value={loading ? "—" : shops.length} icon={<ShopIcon className="w-5 h-5" />} accentColor="neutral" />
         </div>
       )}
 
@@ -570,8 +722,6 @@ export function UsersPanel() {
               <tr>
                 {cols.name && <th className="px-4 py-3 font-medium">Name</th>}
                 {cols.number && <th className="px-4 py-3 font-medium">Number</th>}
-                {cols.balance && <th className="px-4 py-3 font-medium">Balance</th>}
-                {cols.prints && <th className="px-4 py-3 font-medium">Prints</th>}
                 {cols.status && <th className="px-4 py-3 font-medium">Role</th>}
                 {cols.enabled && <th className="px-4 py-3 font-medium">Status</th>}
                 {cols.actions && <th className="px-4 py-3 font-medium text-right">Actions</th>}
@@ -579,16 +729,14 @@ export function UsersPanel() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-muted">Loading...</td></tr>
+                <tr><td colSpan={5} className="px-4 py-8 text-center text-muted">Loading...</td></tr>
               ) : paginatedData.length === 0 ? (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-muted">No users found.</td></tr>
+                <tr><td colSpan={5} className="px-4 py-8 text-center text-muted">No users found.</td></tr>
               ) : (
                 paginatedData.map(user => (
-                  <tr key={user._id} className="border-b border-border last:border-0 hover:bg-surface-muted/30 cursor-pointer transition-colors" onClick={() => openModal(user, "view")}>
+                  <tr key={user._id} className="border-b border-border last:border-0 hover:bg-surface-muted/30 transition-colors">
                     {cols.name && <td className="px-4 py-3 font-medium">{user.name || "—"}</td>}
                     {cols.number && <td className="px-4 py-3 text-muted">{user.number}</td>}
-                    {cols.balance && <td className="px-4 py-3">{user.balance} PKR</td>}
-                    {cols.prints && <td className="px-4 py-3 text-muted">{user.totalPrints || 0}</td>}
                     {cols.status && (
                       <td className="px-4 py-3">
                         {user.isAdmin ? (
@@ -610,20 +758,22 @@ export function UsersPanel() {
                     {cols.actions && (
                       <td className="px-4 py-3">
                         <div className="flex justify-end gap-2">
-                          <button type="button" onClick={(e) => { e.stopPropagation(); openModal(user, "view"); }} className="p-1.5 text-muted hover:text-foreground transition"><EyeIcon className="w-4 h-4" /></button>
-                          <button type="button" onClick={(e) => { e.stopPropagation(); openModal(user, "edit"); }} className="p-1.5 text-muted hover:text-accent transition"><PencilIcon className="w-4 h-4" /></button>
+                          <button type="button" onClick={() => openModal(user, "edit")} title="Edit user" className="p-1.5 text-muted hover:text-accent transition"><PencilIcon className="w-4 h-4" /></button>
                           <button
                             type="button"
-                            onClick={(e) => { e.stopPropagation(); void handleToggleDisable(user); }}
-                            disabled={busy}
-                            className={`rounded-lg px-3 py-1 text-xs font-medium transition ${
-                              user.isDisabled
-                                ? "bg-accent-soft text-accent hover:bg-accent hover:text-white"
-                                : "bg-warning-soft text-warning hover:bg-warning hover:text-white"
-                            } disabled:opacity-50`}
+                            onClick={() => openModal(user, "toggle")}
                             title={user.isDisabled ? "Enable user" : "Disable user"}
+                            className={`p-1.5 text-muted transition ${user.isDisabled ? "hover:text-accent" : "hover:text-danger"}`}
                           >
-                            {user.isDisabled ? "Enable" : "Disable"}
+                            <PowerIcon className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openModal(user, "delete")}
+                            title="Delete user"
+                            className="p-1.5 text-muted hover:text-danger transition"
+                          >
+                            <TrashIcon className="w-4 h-4" />
                           </button>
                         </div>
                       </td>
@@ -662,35 +812,6 @@ export function UsersPanel() {
         )}
       </div>
 
-      <Modal isOpen={modalMode === "view"} onClose={closeModal} title="User Details">
-        {selectedUser && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-xs text-muted mb-1">Name</p>
-                <p className="font-medium">{selectedUser.name || "—"}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted mb-1">Number</p>
-                <p className="font-medium">{selectedUser.number}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted mb-1">Balance</p>
-                <p className="font-medium">{selectedUser.balance} PKR</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted mb-1">Role</p>
-                <p className="font-medium">{selectedUser.isAdmin ? "Admin" : "Regular User"}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted mb-1">Joined</p>
-                <p className="font-medium">{selectedUser.joinedAt ? new Date(selectedUser.joinedAt).toLocaleDateString() : "—"}</p>
-              </div>
-            </div>
-          </div>
-        )}
-      </Modal>
-
       <Modal isOpen={modalMode === "edit"} onClose={closeModal} title="Edit User">
         {selectedUser && (
           <form onSubmit={handleEditSubmit} className="space-y-4">
@@ -725,6 +846,49 @@ export function UsersPanel() {
         )}
       </Modal>
 
+
+      <Modal
+        isOpen={modalMode === "toggle"}
+        onClose={closeModal}
+        title={selectedUser?.isDisabled ? "Enable User" : "Disable User"}
+      >
+        {selectedUser && (
+          <div className="space-y-4">
+            {actionError && <div className="bg-danger-soft text-danger p-3 rounded-lg text-sm">{actionError}</div>}
+            <p className="text-sm">
+              {selectedUser.isDisabled ? (
+                <>Enable <strong>{selectedUser.name || selectedUser.number}</strong>? They will regain access to the app.</>
+              ) : (
+                <>Disable <strong>{selectedUser.name || selectedUser.number}</strong>? They will no longer be able to sign in or send print jobs.</>
+              )}
+            </p>
+            <div className="flex justify-end gap-2 mt-6">
+              <button type="button" onClick={closeModal} className="px-4 py-2 border border-border rounded-lg text-sm hover:bg-surface-muted transition">Cancel</button>
+              <button
+                type="button"
+                onClick={handleToggleDisable}
+                disabled={busy}
+                className={`px-4 py-2 rounded-lg text-sm font-medium text-white transition disabled:opacity-50 ${selectedUser.isDisabled ? "bg-accent hover:bg-accent-hover" : "bg-danger hover:bg-danger/90"}`}
+              >
+                {busy ? "Saving…" : selectedUser.isDisabled ? "Enable User" : "Disable User"}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal isOpen={modalMode === "delete"} onClose={closeModal} title="Delete User">
+        {selectedUser && (
+          <div className="space-y-4">
+            {actionError && <div className="bg-danger-soft text-danger p-3 rounded-lg text-sm">{actionError}</div>}
+            <p className="text-sm">Are you sure you want to delete <strong>{selectedUser.name || selectedUser.number}</strong>? This cannot be undone.</p>
+            <div className="flex justify-end gap-2 mt-6">
+              <button type="button" onClick={closeModal} className="px-4 py-2 border border-border rounded-lg text-sm hover:bg-surface-muted transition">Cancel</button>
+              <button type="button" onClick={handleDeleteUser} disabled={busy} className="px-4 py-2 bg-danger text-white rounded-lg text-sm font-medium hover:bg-danger/90 transition disabled:opacity-50">Confirm Delete</button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       <Modal isOpen={showCreateModal} onClose={closeCreateModal} title="Create User">
         <form onSubmit={handleCreateUser} className="space-y-4">
@@ -793,19 +957,20 @@ export function UsersPanel() {
                         <tr key={adminId} className="border-b border-border last:border-0 hover:bg-surface-muted/30 cursor-pointer transition-colors">
                           <td className="px-4 py-3 font-medium">{userName}</td>
                           <td className="px-4 py-3 text-muted">{userNumber}</td>
-                          <td className="px-4 py-3 text-muted">{admin.appointedAt ? new Date(admin.appointedAt).toLocaleDateString() : "—"}</td>
+                          <td className="px-4 py-3 text-muted">{formatWhen(admin.appointedAt)}</td>
                           <td className="px-4 py-3">
                             <div className="flex justify-end gap-2">
                               <button
                                 type="button"
                                 onClick={() => {
                                   setSelectedAdmin(admin);
+                                  setActionError(null);
                                   setModalMode("dismiss");
                                 }}
-                                disabled={busy}
-                                className="rounded-lg border border-danger/25 bg-danger-soft px-3 py-1 text-xs font-medium text-danger hover:bg-danger hover:text-white transition disabled:opacity-60"
+                                title="Dismiss admin"
+                                className="p-1.5 text-muted hover:text-danger transition"
                               >
-                                Dismiss
+                                <TrashIcon className="w-4 h-4" />
                               </button>
                             </div>
                           </td>
@@ -859,6 +1024,154 @@ export function UsersPanel() {
                 <div className="flex justify-end gap-2 mt-6">
                   <button type="button" onClick={() => { setModalMode(null); setSelectedAdmin(null); setActionError(null); }} className="px-4 py-2 border border-border rounded-lg text-sm hover:bg-surface-muted transition">Cancel</button>
                   <button type="button" onClick={handleDismissAdmin} disabled={busy} className="px-4 py-2 bg-danger text-white rounded-lg text-sm font-medium hover:bg-danger/90 transition disabled:opacity-50">Confirm Dismiss</button>
+                </div>
+              </div>
+            )}
+          </Modal>
+        </>
+      )}
+
+      {/* Owners Tab */}
+      {tab === "owners" && (
+        <>
+          {(error || actionError) && (
+            <div className="rounded-xl border border-danger/20 bg-danger-soft px-4 py-3 text-sm text-danger">
+              {actionError || error}
+            </div>
+          )}
+
+          <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm whitespace-nowrap">
+                <thead className="bg-surface-muted/50 text-muted">
+                  <tr>
+                    <th className="px-4 py-3 font-medium">Name</th>
+                    <th className="px-4 py-3 font-medium">Phone</th>
+                    <th className="px-4 py-3 font-medium">Shop</th>
+                    <th className="px-4 py-3 font-medium">Appointed By</th>
+                    <th className="px-4 py-3 font-medium">Appointed At</th>
+                    <th className="px-4 py-3 font-medium text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr><td colSpan={6} className="px-4 py-8 text-center text-muted">Loading owners…</td></tr>
+                  ) : owners.length === 0 ? (
+                    <tr><td colSpan={6} className="px-4 py-8 text-center text-muted">No owners yet.</td></tr>
+                  ) : (
+                    owners.map((owner, idx) => {
+                      const ownerUser = typeof owner.user === "string" ? null : owner.user;
+                      const ownerShop = typeof owner.shop === "string" ? null : owner.shop;
+                      const appointedBy = typeof owner.appointedBy === "string" ? null : owner.appointedBy;
+                      return (
+                        <tr key={owner._id || idx} className="border-b border-border last:border-0 hover:bg-surface-muted/30 transition-colors">
+                          <td className="px-4 py-3 font-medium">{ownerUser?.name || "—"}</td>
+                          <td className="px-4 py-3 text-muted">{ownerUser?.number || "—"}</td>
+                          <td className="px-4 py-3">{ownerShop?.name || "—"}</td>
+                          <td className="px-4 py-3 text-muted">
+                            {appointedBy?.name || "—"}
+                            {owner.appointedByAdmin && (
+                              <span className="ml-2 bg-accent-soft text-accent px-2 py-0.5 rounded text-xs font-medium">Admin</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-muted">{formatWhen(owner.appointedAt)}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedOwner(owner);
+                                  setActionError(null);
+                                  setModalMode("removeOwner");
+                                }}
+                                title="Remove owner"
+                                className="p-1.5 text-muted hover:text-danger transition"
+                              >
+                                <TrashIcon className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Appoint Owner Modal */}
+          <Modal
+            isOpen={modalMode === "appointOwner"}
+            onClose={() => { setModalMode(null); setAppointOwnerShopId(""); setAppointOwnerUserId(""); setActionError(null); }}
+            title="Appoint Owner"
+          >
+            <form onSubmit={handleAppointOwner} className="space-y-4">
+              {actionError && <div className="bg-danger-soft text-danger p-3 rounded-lg text-sm">{actionError}</div>}
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Select Shop</label>
+                <select
+                  value={appointOwnerShopId}
+                  onChange={e => setAppointOwnerShopId(e.target.value)}
+                  className="w-full border border-border rounded-lg px-3 py-2 bg-surface"
+                  required
+                >
+                  <option value="">Choose a shop...</option>
+                  {shops.map(shop => (
+                    <option key={shop._id} value={shop._id}>{shop.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Select User</label>
+                <select
+                  value={appointOwnerUserId}
+                  onChange={e => setAppointOwnerUserId(e.target.value)}
+                  className="w-full border border-border rounded-lg px-3 py-2 bg-surface"
+                  required
+                >
+                  <option value="">Choose a user...</option>
+                  {users
+                    .filter(user => !owners.some(o => {
+                      const oUserId = typeof o.user === "string" ? o.user : o.user?._id;
+                      const oShopId = typeof o.shop === "string" ? o.shop : o.shop?._id;
+                      return oUserId === user._id && oShopId === appointOwnerShopId;
+                    }))
+                    .map(user => (
+                      <option key={user._id} value={user._id}>
+                        {user.name || user.number}
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-2 mt-6">
+                <button type="button" onClick={() => { setModalMode(null); setAppointOwnerShopId(""); setAppointOwnerUserId(""); setActionError(null); }} className="px-4 py-2 border border-border rounded-lg text-sm hover:bg-surface-muted transition">Cancel</button>
+                <button type="submit" disabled={busy || !appointOwnerShopId || !appointOwnerUserId} className="px-4 py-2 bg-accent text-white rounded-lg text-sm font-medium hover:bg-accent-hover transition disabled:opacity-50">Appoint Owner</button>
+              </div>
+            </form>
+          </Modal>
+
+          {/* Remove Owner Modal */}
+          <Modal
+            isOpen={modalMode === "removeOwner"}
+            onClose={() => { setModalMode(null); setSelectedOwner(null); setActionError(null); }}
+            title="Remove Owner"
+          >
+            {selectedOwner && (
+              <div className="space-y-4">
+                {actionError && <div className="bg-danger-soft text-danger p-3 rounded-lg text-sm">{actionError}</div>}
+                <p className="text-sm">
+                  Are you sure you want to remove{" "}
+                  <strong>{(typeof selectedOwner.user === "string" ? null : selectedOwner.user)?.name || "this user"}</strong>{" "}
+                  as an owner of{" "}
+                  <strong>{(typeof selectedOwner.shop === "string" ? null : selectedOwner.shop)?.name || "this shop"}</strong>?
+                </p>
+                <div className="flex justify-end gap-2 mt-6">
+                  <button type="button" onClick={() => { setModalMode(null); setSelectedOwner(null); setActionError(null); }} className="px-4 py-2 border border-border rounded-lg text-sm hover:bg-surface-muted transition">Cancel</button>
+                  <button type="button" onClick={handleRemoveOwner} disabled={busy} className="px-4 py-2 bg-danger text-white rounded-lg text-sm font-medium hover:bg-danger/90 transition disabled:opacity-50">Confirm Remove</button>
                 </div>
               </div>
             )}
