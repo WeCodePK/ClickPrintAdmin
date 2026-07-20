@@ -6,10 +6,11 @@ export interface Shop {
   address: string;
   coordinates: [number, number];
   imageUrl?: string;
+  imageFile?: string;
+  /** Fixed length 7, Monday first. Each entry is "HH:MM-HH:MM" or "Closed". */
   timings?: string[];
-  walletNumber?: string;
-  capabilities: string[];
-  owner: string;
+  contactNumber?: string;
+  googleMapsLink?: string;
   isDisabled?: boolean;
   isOnline?: boolean;
   lastSeen?: string;
@@ -19,11 +20,26 @@ export interface CreateShopInput {
   name: string;
   address: string;
   coordinates: [number, number];
-  imageUrl: string;
+  /** Id of a file previously uploaded via POST /api/files. */
+  imageFile: string;
+  /** Fixed length 7, Monday first. Each entry is "HH:MM-HH:MM" or "Closed". */
   timings: string[];
-  walletNumber: string;
-  capabilities: string[];
-  owner: string;
+  contactNumber: string;
+  googleMapsLink?: string;
+}
+
+export interface UploadFileResponse {
+  success: boolean;
+  message: string;
+  data: {
+    file: {
+      _id: string;
+      originalName: string;
+      numberOfPages: number;
+      raw: boolean;
+      createdAt: string;
+    };
+  };
 }
 
 export interface CreateShopResponse {

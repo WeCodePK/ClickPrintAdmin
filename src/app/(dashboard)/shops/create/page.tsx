@@ -11,7 +11,7 @@ export default function CreateShopPage() {
           Create shop
         </h1>
         <p className="mt-2 text-sm text-muted">
-          Register a new location with address, timings, and wallet details.
+          Register a new location with address, timings, and contact details.
         </p>
       </header>
 

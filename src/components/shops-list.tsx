@@ -25,6 +25,9 @@ interface Job {
   [key: string]: unknown;
 }
 
+// Timings arrive as a fixed 7-entry array, Monday first.
+const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
 const COLORS = {
   online: "var(--color-accent)",
   offline: "var(--color-warning)",
@@ -79,8 +82,7 @@ export function ShopsList() {
   const [cols, setCols] = useState({
     name: true,
     address: true,
-    wallet: true,
-    capabilities: true,
+    contact: true,
     status: true,
     actions: true
   });
@@ -153,7 +155,7 @@ export function ShopsList() {
     const q = query.trim().toLowerCase();
     
     return shops.filter(shop => {
-      const matchSearch = !q || shop.name.toLowerCase().includes(q) || shop.address.toLowerCase().includes(q) || shop.walletNumber?.includes(q);
+      const matchSearch = !q || shop.name.toLowerCase().includes(q) || shop.address.toLowerCase().includes(q) || shop.contactNumber?.includes(q);
       const matchStatus = statusFilter === "all" ? true : 
                           statusFilter === "disabled" ? shop.isDisabled :
                           statusFilter === "online" ? shop.isOnline && !shop.isDisabled :
@@ -194,16 +196,14 @@ export function ShopsList() {
     const headers = [];
     if (cols.name) headers.push("Name");
     if (cols.address) headers.push("Address");
-    if (cols.wallet) headers.push("Wallet");
-    if (cols.capabilities) headers.push("Capabilities");
+    if (cols.contact) headers.push("Contact");
     if (cols.status) headers.push("Status");
     
     const tableData = filtered.map(shop => {
       const row = [];
       if (cols.name) row.push(shop.name);
       if (cols.address) row.push(shop.address);
-      if (cols.wallet) row.push(shop.walletNumber || "—");
-      if (cols.capabilities) row.push(shop.capabilities?.join(", ") || "—");
+      if (cols.contact) row.push(shop.contactNumber || "—");
       if (cols.status) row.push(shop.isDisabled ? "Disabled" : shop.isOnline ? "Online" : "Offline");
       return row;
     });
@@ -408,8 +408,7 @@ export function ShopsList() {
               <tr>
                 {cols.name && <th className="px-4 py-3 font-medium">Name</th>}
                 {cols.address && <th className="px-4 py-3 font-medium">Address</th>}
-                {cols.wallet && <th className="px-4 py-3 font-medium">Wallet</th>}
-                {cols.capabilities && <th className="px-4 py-3 font-medium">Capabilities</th>}
+                {cols.contact && <th className="px-4 py-3 font-medium">Contact</th>}
                 {cols.status && <th className="px-4 py-3 font-medium">Status</th>}
                 {cols.actions && <th className="px-4 py-3 font-medium text-right">Actions</th>}
               </tr>
@@ -429,23 +428,10 @@ export function ShopsList() {
                       onClick={() => openModal(shop, "view")}
                     >
                       {cols.name && (
-                        <td className="px-4 py-3 font-medium">
-                          {shop.name}
-                          {shop.owner ? <div className="text-[10px] text-muted">Owner: {shop.owner}</div> : null}
-                        </td>
+                        <td className="px-4 py-3 font-medium">{shop.name}</td>
                       )}
                       {cols.address && <td className="px-4 py-3 text-muted max-w-[200px]" title={shop.address}>{addressDisplay}</td>}
-                      {cols.wallet && <td className="px-4 py-3 text-muted">{shop.walletNumber || "—"}</td>}
-                      {cols.capabilities && (
-                        <td className="px-4 py-3">
-                          <div className="flex gap-1">
-                            {shop.capabilities?.slice(0, 2).map(c => (
-                              <span key={c} className="bg-surface-muted text-muted px-1.5 py-0.5 rounded text-[10px]">{c}</span>
-                            ))}
-                            {(shop.capabilities?.length || 0) > 2 && <span className="text-[10px] text-muted">+{shop.capabilities!.length - 2}</span>}
-                          </div>
-                        </td>
-                      )}
+                      {cols.contact && <td className="px-4 py-3 text-muted">{shop.contactNumber || "—"}</td>}
                       {cols.status && <td className="px-4 py-3"><StatusPill online={shop.isOnline} disabled={shop.isDisabled} /></td>}
                       {cols.actions && (
                         <td className="px-4 py-3">
@@ -498,12 +484,22 @@ export function ShopsList() {
               <div><p className="text-xs text-muted mb-1">Name</p><p className="font-medium">{selectedShop.name}</p></div>
               <div><p className="text-xs text-muted mb-1">Status</p><StatusPill online={selectedShop.isOnline} disabled={selectedShop.isDisabled} /></div>
               <div className="col-span-2"><p className="text-xs text-muted mb-1">Address</p><p className="font-medium text-sm whitespace-normal">{selectedShop.address}</p></div>
-              <div><p className="text-xs text-muted mb-1">Wallet Number</p><p className="font-medium">{selectedShop.walletNumber || "—"}</p></div>
-              <div><p className="text-xs text-muted mb-1">Owner</p><p className="font-medium">{selectedShop.owner}</p></div>
+              <div><p className="text-xs text-muted mb-1">Contact Number</p><p className="font-medium">{selectedShop.contactNumber || "—"}</p></div>
+              <div>
+                <p className="text-xs text-muted mb-1">Google Maps</p>
+                {selectedShop.googleMapsLink ? (
+                  <a href={selectedShop.googleMapsLink} target="_blank" rel="noreferrer" className="font-medium text-accent hover:underline">Open in Maps</a>
+                ) : <p className="font-medium">—</p>}
+              </div>
               <div className="col-span-2">
-                <p className="text-xs text-muted mb-1">Capabilities</p>
-                <div className="flex flex-wrap gap-2">
-                  {selectedShop.capabilities?.map(c => <span key={c} className="bg-surface-muted px-2 py-1 rounded text-xs">{c}</span>)}
+                <p className="text-xs text-muted mb-1">Timings</p>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                  {DAY_LABELS.map((day, i) => (
+                    <div key={day} className="flex justify-between whitespace-normal">
+                      <span className="text-muted">{day}</span>
+                      <span className="font-medium">{selectedShop.timings?.[i] || "—"}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
