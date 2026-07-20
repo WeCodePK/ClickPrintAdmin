@@ -14,7 +14,7 @@ const fraunces = Fraunces({
 });
 
 export const metadata: Metadata = {
-  title: "ClickPrint Admin",
+  title: "ClickPrintAdmin",
   description: "Admin console for shops and wallet top-ups",
 };
 

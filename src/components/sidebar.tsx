@@ -12,6 +12,31 @@ const USER_SUB_LINKS = [
   { href: "/users/owners", label: "Owners" },
 ];
 
+const SHOP_SUB_LINKS = [
+  { href: "/shops", label: "All" },
+  { href: "/shops/printers", label: "Printers" },
+  { href: "/shops/services", label: "Services" },
+];
+
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`transition-transform ${open ? "rotate-180" : ""}`}
+    >
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
 function SidebarNav() {
   const pathname = usePathname();
   const router = useRouter();
@@ -23,6 +48,10 @@ function SidebarNav() {
   // the user explicitly toggles it.
   const [usersToggled, setUsersToggled] = useState<boolean | null>(null);
   const usersOpen = usersToggled ?? usersActive;
+
+  const shopsActive = pathname.startsWith("/shops");
+  const [shopsToggled, setShopsToggled] = useState<boolean | null>(null);
+  const shopsOpen = shopsToggled ?? shopsActive;
 
   const linkClass = (active: boolean) =>
     `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
@@ -100,20 +129,7 @@ function SidebarNav() {
                   <UsersIcon className="w-5 h-5" />
                   <span>Users</span>
                 </div>
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className={`transition-transform ${usersOpen ? "rotate-180" : ""}`}
-                >
-                  <path d="m6 9 6 6 6-6" />
-                </svg>
+                <Chevron open={usersOpen} />
               </button>
 
               {usersOpen && (
@@ -128,17 +144,38 @@ function SidebarNav() {
             </div>
           )}
 
-          <Link
-            href="/shops"
-            className={linkClass(pathname.startsWith("/shops"))}
-            title={collapsed ? "Shops" : undefined}
-          >
-            <div className="flex items-center gap-3">
-              {!collapsed && <span className="text-xs opacity-50">3.</span>}
-              <ShopIcon className="w-5 h-5" />
-              {!collapsed && <span>Shops</span>}
+          {collapsed ? (
+            <Link href="/shops" className={linkClass(shopsActive)} title="Shops">
+              <div className="flex items-center gap-3">
+                <ShopIcon className="w-5 h-5" />
+              </div>
+            </Link>
+          ) : (
+            <div>
+              <button
+                type="button"
+                onClick={() => setShopsToggled(!shopsOpen)}
+                className={groupBtn(shopsActive)}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-xs opacity-50">3.</span>
+                  <ShopIcon className="w-5 h-5" />
+                  <span>Shops</span>
+                </div>
+                <Chevron open={shopsOpen} />
+              </button>
+
+              {shopsOpen && (
+                <div className="mt-1 ml-6 flex flex-col gap-1 border-l border-white/10 pl-3">
+                  {SHOP_SUB_LINKS.map(({ href, label }) => (
+                    <Link key={href} href={href} className={subLinkClass(pathname === href)}>
+                      {label}
+                    </Link>
+                  ))}
+                </div>
+              )}
             </div>
-          </Link>
+          )}
 
           <Link
             href="/topups"

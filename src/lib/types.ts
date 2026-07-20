@@ -300,3 +300,110 @@ export interface AppointOwnerResponse {
     owner?: Owner;
   };
 }
+
+/** A shop as it arrives populated inside another record. */
+export interface ShopRef {
+  _id: string;
+  name?: string;
+}
+
+export interface Printer {
+  _id: string;
+  name: string;
+  shop: ShopRef | string;
+  isDisabled?: boolean;
+  isOnline?: boolean;
+  lastSeen?: string;
+}
+
+export interface ListPrintersResponse {
+  success: boolean;
+  message?: string;
+  data?: {
+    printers?: Printer[];
+  };
+}
+
+export interface PrinterResponse {
+  success: boolean;
+  message?: string;
+  data?: {
+    printer?: Printer;
+  };
+}
+
+export interface CreatePrinterInput {
+  name: string;
+}
+
+export interface PrinterStatsData {
+  printers: number;
+  online: number;
+  offline: number;
+  disabled: number;
+}
+
+/** The attribute combination a service prices — its natural key within a shop. */
+export interface ServiceKeys {
+  pageType: string;
+  /** true = colour, false = black & white. */
+  color: boolean;
+  /** true = double-sided, false = single-sided. */
+  sidedness: boolean;
+}
+
+export interface ServicePrinterRef {
+  _id: string;
+  name?: string;
+  isOnline?: boolean;
+}
+
+export interface ServicePrinter {
+  useAuto: boolean;
+  printer: ServicePrinterRef | string;
+}
+
+export interface Service {
+  _id: string;
+  /** Derived by the backend from `keys`, e.g. "A4-BW-SS". */
+  name?: string;
+  rate: number;
+  keys: ServiceKeys;
+  shop: ShopRef | string;
+  printers?: ServicePrinter[];
+  isDisabled?: boolean;
+}
+
+export interface ListServicesResponse {
+  success: boolean;
+  message?: string;
+  data?: {
+    services?: Service[];
+  };
+}
+
+export interface ServiceResponse {
+  success: boolean;
+  message?: string;
+  data?: {
+    service?: Service;
+  };
+}
+
+/**
+ * Service health reflects the printers backing a service, not its enabled flag:
+ * `healthy` = every printer online, `dead` = none online, `unhealthy` = in between.
+ */
+export interface ServiceStatsData {
+  services: number;
+  healthy: number;
+  unhealthy: number;
+  dead: number;
+}
+
+/** Body for POST/PUT — the backend derives `name`, so it is never sent. */
+export interface ServiceInput {
+  rate: number;
+  keys: ServiceKeys;
+  printers: { useAuto: boolean; printer: string }[];
+}
