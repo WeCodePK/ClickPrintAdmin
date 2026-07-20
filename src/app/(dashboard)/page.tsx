@@ -173,6 +173,7 @@ export default function OverviewPage() {
               <table className="w-full text-left text-sm whitespace-nowrap">
                 <thead className="bg-surface-muted/50 text-muted">
                   <tr>
+                    <th className="px-4 py-3 font-medium w-12">#</th>
                     <th className="px-4 py-3 font-medium">Name</th>
                     <th className="px-4 py-3 font-medium">Phone Number</th>
                     <th className="px-4 py-3 font-medium">Balance</th>
@@ -180,8 +181,9 @@ export default function OverviewPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {previewUsers.map(u => (
+                  {previewUsers.map((u, index) => (
                     <tr key={u._id} className="border-b border-border last:border-0 hover:bg-surface-muted/30">
+                      <td className="px-4 py-3 text-muted tabular-nums">{index + 1}</td>
                       <td className="px-4 py-3 font-medium">{u.name || "—"}</td>
                       <td className="px-4 py-3 text-muted">{u.number}</td>
                       <td className="px-4 py-3">{u.balance} PKR</td>
@@ -223,14 +225,16 @@ export default function OverviewPage() {
               <table className="w-full text-left text-sm whitespace-nowrap">
                 <thead className="bg-surface-muted/50 text-muted">
                   <tr>
+                    <th className="px-4 py-3 font-medium w-12">#</th>
                     <th className="px-4 py-3 font-medium">Shop Name</th>
                     <th className="px-4 py-3 font-medium">Address</th>
                     <th className="px-4 py-3 font-medium">Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {previewShops.map(s => (
+                  {previewShops.map((s, index) => (
                     <tr key={s._id} className="border-b border-border last:border-0 hover:bg-surface-muted/30">
+                      <td className="px-4 py-3 text-muted tabular-nums">{index + 1}</td>
                       <td className="px-4 py-3 font-medium">{s.name}</td>
                       <td className="px-4 py-3 text-muted truncate max-w-[200px]">{s.address}</td>
                       <td className="px-4 py-3">
@@ -272,14 +276,16 @@ export default function OverviewPage() {
               <table className="w-full text-left text-sm whitespace-nowrap">
                 <thead className="bg-surface-muted/50 text-muted">
                   <tr>
+                    <th className="px-4 py-3 font-medium w-12">#</th>
                     <th className="px-4 py-3 font-medium">Date</th>
                     <th className="px-4 py-3 font-medium">Amount</th>
                     <th className="px-4 py-3 font-medium">Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {previewTopups.map(t => (
+                  {previewTopups.map((t, index) => (
                     <tr key={t._id} className="border-b border-border last:border-0 hover:bg-surface-muted/30">
+                      <td className="px-4 py-3 text-muted tabular-nums">{index + 1}</td>
                       <td className="px-4 py-3 text-muted">{formatDate(t.createdAt)}</td>
                       <td className="px-4 py-3 font-medium">{formatMoney(t.amount)}</td>
                       <td className="px-4 py-3">
@@ -321,13 +327,15 @@ export default function OverviewPage() {
               <table className="w-full text-left text-sm whitespace-nowrap">
                 <thead className="bg-surface-muted/50 text-muted">
                   <tr>
+                    <th className="px-4 py-3 font-medium w-12">#</th>
                     <th className="px-4 py-3 font-medium">Date</th>
                     <th className="px-4 py-3 font-medium">Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {previewDrafts.map(d => (
+                  {previewDrafts.map((d, index) => (
                     <tr key={d._id} className="border-b border-border last:border-0 hover:bg-surface-muted/30">
+                      <td className="px-4 py-3 text-muted tabular-nums">{index + 1}</td>
                       <td className="px-4 py-3 text-muted">{formatDate(d.createdAt)}</td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex rounded px-2 py-0.5 text-xs font-medium capitalize ${
@@ -368,14 +376,16 @@ export default function OverviewPage() {
               <table className="w-full text-left text-sm whitespace-nowrap">
                 <thead className="bg-surface-muted/50 text-muted">
                   <tr>
+                    <th className="px-4 py-3 font-medium w-12">#</th>
                     <th className="px-4 py-3 font-medium">Date</th>
                     <th className="px-4 py-3 font-medium">Cost</th>
                     <th className="px-4 py-3 font-medium">Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {previewJobs.map(j => (
+                  {previewJobs.map((j, index) => (
                     <tr key={j._id} className="border-b border-border last:border-0 hover:bg-surface-muted/30">
+                      <td className="px-4 py-3 text-muted tabular-nums">{index + 1}</td>
                       <td className="px-4 py-3 text-muted">{formatDate(j.createdAt)}</td>
                       <td className="px-4 py-3 font-medium">{j.cost ? formatMoney(j.cost) : "—"}</td>
                       <td className="px-4 py-3">

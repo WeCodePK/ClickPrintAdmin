@@ -720,6 +720,7 @@ export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
           <table className="w-full text-left text-sm whitespace-nowrap">
             <thead className="bg-surface-muted/50 text-muted">
               <tr>
+                <th className="px-4 py-3 font-medium w-12">#</th>
                 {cols.name && <th className="px-4 py-3 font-medium">Name</th>}
                 {cols.number && <th className="px-4 py-3 font-medium">Number</th>}
                 {cols.status && <th className="px-4 py-3 font-medium">Role</th>}
@@ -733,8 +734,9 @@ export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
               ) : paginatedData.length === 0 ? (
                 <tr><td colSpan={5} className="px-4 py-8 text-center text-muted">No users found.</td></tr>
               ) : (
-                paginatedData.map(user => (
+                paginatedData.map((user, index) => (
                   <tr key={user._id} className="border-b border-border last:border-0 hover:bg-surface-muted/30 transition-colors">
+                    <td className="px-4 py-3 text-muted tabular-nums">{(page - 1) * pageSize + index + 1}</td>
                     {cols.name && <td className="px-4 py-3 font-medium">{user.name || "—"}</td>}
                     {cols.number && <td className="px-4 py-3 text-muted">{user.number}</td>}
                     {cols.status && (
@@ -935,6 +937,7 @@ export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
               <table className="w-full text-left text-sm whitespace-nowrap">
                 <thead className="bg-surface-muted/50 text-muted">
                   <tr>
+                    <th className="px-4 py-3 font-medium w-12">#</th>
                     <th className="px-4 py-3 font-medium">Name</th>
                     <th className="px-4 py-3 font-medium">Phone</th>
                     <th className="px-4 py-3 font-medium">Appointed At</th>
@@ -943,9 +946,9 @@ export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr><td colSpan={4} className="px-4 py-8 text-center text-muted">Loading admins…</td></tr>
+                    <tr><td colSpan={5} className="px-4 py-8 text-center text-muted">Loading admins…</td></tr>
                   ) : admins.length === 0 ? (
-                    <tr><td colSpan={4} className="px-4 py-8 text-center text-muted">No admins yet.</td></tr>
+                    <tr><td colSpan={5} className="px-4 py-8 text-center text-muted">No admins yet.</td></tr>
                   ) : (
                     <>
                       {admins.map((admin, idx) => {
@@ -955,6 +958,7 @@ export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
                         const userNumber = adminIdObj?.number || "—";
                         return (
                         <tr key={adminId} className="border-b border-border last:border-0 hover:bg-surface-muted/30 cursor-pointer transition-colors">
+                          <td className="px-4 py-3 text-muted tabular-nums">{idx + 1}</td>
                           <td className="px-4 py-3 font-medium">{userName}</td>
                           <td className="px-4 py-3 text-muted">{userNumber}</td>
                           <td className="px-4 py-3 text-muted">{formatWhen(admin.appointedAt)}</td>
@@ -1045,6 +1049,7 @@ export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
               <table className="w-full text-left text-sm whitespace-nowrap">
                 <thead className="bg-surface-muted/50 text-muted">
                   <tr>
+                    <th className="px-4 py-3 font-medium w-12">#</th>
                     <th className="px-4 py-3 font-medium">Name</th>
                     <th className="px-4 py-3 font-medium">Phone</th>
                     <th className="px-4 py-3 font-medium">Shop</th>
@@ -1055,9 +1060,9 @@ export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr><td colSpan={6} className="px-4 py-8 text-center text-muted">Loading owners…</td></tr>
+                    <tr><td colSpan={7} className="px-4 py-8 text-center text-muted">Loading owners…</td></tr>
                   ) : owners.length === 0 ? (
-                    <tr><td colSpan={6} className="px-4 py-8 text-center text-muted">No owners yet.</td></tr>
+                    <tr><td colSpan={7} className="px-4 py-8 text-center text-muted">No owners yet.</td></tr>
                   ) : (
                     owners.map((owner, idx) => {
                       const ownerUser = typeof owner.user === "string" ? null : owner.user;
@@ -1065,6 +1070,7 @@ export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
                       const appointedBy = typeof owner.appointedBy === "string" ? null : owner.appointedBy;
                       return (
                         <tr key={owner._id || idx} className="border-b border-border last:border-0 hover:bg-surface-muted/30 transition-colors">
+                          <td className="px-4 py-3 text-muted tabular-nums">{idx + 1}</td>
                           <td className="px-4 py-3 font-medium">{ownerUser?.name || "—"}</td>
                           <td className="px-4 py-3 text-muted">{ownerUser?.number || "—"}</td>
                           <td className="px-4 py-3">{ownerShop?.name || "—"}</td>

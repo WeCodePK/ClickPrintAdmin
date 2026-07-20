@@ -399,6 +399,7 @@ export function JobsPanel() {
           <table className="min-w-full text-left text-sm whitespace-nowrap">
             <thead className="border-b border-border bg-surface-muted/50 text-xs uppercase tracking-wide text-muted">
               <tr>
+                <th className="px-4 py-3 font-medium w-12">#</th>
                 {cols.status && <th className="px-4 py-3 font-medium">Status</th>}
                 {cols.createdBy && <th className="px-4 py-3 font-medium">Created by</th>}
                 {cols.cost && <th className="px-4 py-3 font-medium">Cost</th>}
@@ -412,7 +413,7 @@ export function JobsPanel() {
               ) : paginatedData.length === 0 ? (
                 <tr><td colSpan={5} className="px-4 py-12 text-center text-muted">No {tab} in this view.</td></tr>
               ) : (
-                paginatedData.map((item) => {
+                paginatedData.map((item, index) => {
                   const status = normalizeStatus(item.status);
                   const by = item.createdBy;
                   const phone = typeof by === "object" && by?.number ? by.number : null;
@@ -424,6 +425,7 @@ export function JobsPanel() {
                       className="border-b border-border/70 last:border-b-0 hover:bg-surface-muted/50 cursor-pointer transition-colors"
                       onClick={() => { setSelectedJob(item); setModalMode("view"); }}
                     >
+                      <td className="px-4 py-4 text-muted tabular-nums">{(page - 1) * pageSize + index + 1}</td>
                       {cols.status && <td className="px-4 py-4"><Badge status={status} /></td>}
                       {cols.createdBy && (
                         <td className="px-4 py-4">
