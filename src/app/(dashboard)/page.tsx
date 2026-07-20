@@ -360,7 +360,7 @@ export default function OverviewPage() {
           <StatCard label="Total Jobs" value={loading ? "—" : jobStats?.jobs || 0} icon={<PrinterIcon />} accentColor="accent" />
           <StatCard label="Printing" value={loading ? "—" : jobStats?.printing || 0} accentColor="accent" />
           <StatCard label="Queued" value={loading ? "—" : jobStats?.queued || 0} accentColor="warning" />
-          <StatCard label="Submitted" value={loading ? "—" : jobStats?.submitted || 0} accentColor="surface-muted" />
+          <StatCard label="Submitted" value={loading ? "—" : jobStats?.submitted || 0} accentColor="neutral" />
         </div>
         {!loading && previewJobs.length > 0 && (
           <div className="bg-surface rounded-xl border border-border overflow-hidden shadow-sm mt-4">

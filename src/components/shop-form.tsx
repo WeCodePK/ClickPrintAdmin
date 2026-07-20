@@ -2,6 +2,7 @@
 
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth-provider";
 import type { CreateShopResponse, Shop, UploadFileResponse } from "@/lib/types";
 import type { LatLng } from "@/components/location-picker";
@@ -40,6 +41,22 @@ function serializeTiming(timing: DayTiming) {
   return timing.closed ? "Closed" : `${timing.open}-${timing.close}`;
 }
 
+/** Turns the backend's `["08:30-17:30", "Closed", …]` back into editable rows. */
+function parseTimings(timings: string[] | undefined): DayTiming[] {
+  const fallback = defaultTimings();
+  if (!Array.isArray(timings)) return fallback;
+
+  return fallback.map((day, index) => {
+    const raw = timings[index]?.trim();
+    if (!raw) return day;
+    if (raw.toLowerCase() === "closed") return { ...day, closed: true };
+
+    const [open, close] = raw.split("-");
+    if (!open || !close) return day;
+    return { closed: false, open, close };
+  });
+}
+
 type FieldErrors = Partial<
   Record<
     | "name"
@@ -67,17 +84,44 @@ const emptyForm: FormState = {
   googleMapsLink: "",
 };
 
-export function CreateShopForm({
-  onCreated,
+export function ShopForm({
+  shop,
+  onSaved,
+  onCancel,
+  embedded = false,
 }: {
-  onCreated?: (shop: Shop) => void;
+  /** Omit to create a new shop; pass a shop to edit it in place. */
+  shop?: Shop;
+  onSaved?: (shop: Shop) => void;
+  onCancel?: () => void;
+  /** Right-aligns the actions, for rendering inside a modal. */
+  embedded?: boolean;
 }) {
+  const isEdit = Boolean(shop);
   const { token } = useAuth();
-  const [form, setForm] = useState(emptyForm);
-  const [coordinates, setCoordinates] = useState<LatLng | null>(null);
-  const [timings, setTimings] = useState<DayTiming[]>(defaultTimings);
-  const [imageFileId, setImageFileId] = useState("");
+  const router = useRouter();
+
+  const [form, setForm] = useState<FormState>(() =>
+    shop
+      ? {
+          name: shop.name ?? "",
+          address: shop.address ?? "",
+          contactNumber: shop.contactNumber ?? "",
+          googleMapsLink: shop.googleMapsLink ?? "",
+        }
+      : emptyForm,
+  );
+  const [coordinates, setCoordinates] = useState<LatLng | null>(() =>
+    Array.isArray(shop?.coordinates) && shop.coordinates.length === 2
+      ? { lat: shop.coordinates[0], lng: shop.coordinates[1] }
+      : null,
+  );
+  const [timings, setTimings] = useState<DayTiming[]>(() =>
+    shop ? parseTimings(shop.timings) : defaultTimings(),
+  );
+  const [imageFileId, setImageFileId] = useState(shop?.imageFile ?? "");
   const [imageName, setImageName] = useState("");
+  // Object URL for a freshly picked file; existing images stream from /api/files.
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
@@ -91,10 +135,13 @@ export function CreateShopForm({
     };
   }, [imagePreview]);
 
-  const timingPreview = useMemo(
-    () => timings.map(serializeTiming),
-    [timings],
-  );
+  const timingPreview = useMemo(() => timings.map(serializeTiming), [timings]);
+
+  const previewSrc =
+    imagePreview ??
+    (imageFileId && token
+      ? `/api/files/${imageFileId}?token=${encodeURIComponent(token)}`
+      : null);
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -114,7 +161,6 @@ export function CreateShopForm({
     if (!file) return;
 
     setIsUploading(true);
-    setImageFileId("");
     setErrors((prev) => ({ ...prev, imageFile: undefined }));
 
     const body = new FormData();
@@ -171,7 +217,10 @@ export function CreateShopForm({
     if (timings.some((day) => !day.closed && (!day.open || !day.close))) {
       nextErrors.timings = "Every open day needs an opening and closing time";
     }
-    if (form.googleMapsLink.trim() && !/^https?:\/\//i.test(form.googleMapsLink.trim())) {
+    if (
+      form.googleMapsLink.trim() &&
+      !/^https?:\/\//i.test(form.googleMapsLink.trim())
+    ) {
       nextErrors.googleMapsLink = "Must be a valid http(s) link";
     }
 
@@ -195,14 +244,17 @@ export function CreateShopForm({
     };
 
     try {
-      const response = await fetch("/api/shops", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      const response = await fetch(
+        isEdit ? `/api/shops/${shop!._id}` : "/api/shops",
+        {
+          method: isEdit ? "PUT" : "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify(payload),
         },
-        body: JSON.stringify(payload),
-      });
+      );
 
       const data = (await response.json()) as CreateShopResponse & {
         error?: string;
@@ -211,30 +263,27 @@ export function CreateShopForm({
 
       if (!response.ok || data.success === false) {
         setErrors(data.details ?? {});
-        setMessage(data.error ?? data.message ?? "Failed to create shop");
+        setMessage(data.error ?? data.message ?? "Failed to save shop");
+        setIsSubmitting(false);
         return;
       }
 
-      const shop = data.data?.shop;
-      setForm(emptyForm);
-      setCoordinates(null);
-      setTimings(defaultTimings());
-      setImageFileId("");
-      setImageName("");
-      setImagePreview((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return null;
-      });
+      const saved = data.data?.shop;
       setIsSuccess(true);
-      const disabledNote =
-        shop?.isDisabled === true
-          ? " It was created as disabled, so it may not appear in All shops until enabled."
-          : "";
-      setMessage((data.message ?? `Shop "${shop?.name}" created`) + disabledNote);
-      if (shop) onCreated?.(shop);
+      onSaved?.(saved ?? ({ ...shop, ...payload } as Shop));
+
+      if (!isEdit) {
+        // Nothing left to say on this page — hand the admin back to the list,
+        // leaving the button disabled while the navigation settles.
+        router.push("/shops");
+        router.refresh();
+        return;
+      }
+
+      setMessage(data.message ?? "Shop updated");
+      setIsSubmitting(false);
     } catch {
-      setMessage("Network error while creating shop");
-    } finally {
+      setMessage(`Network error while ${isEdit ? "updating" : "creating"} shop`);
       setIsSubmitting(false);
     }
   }
@@ -243,19 +292,7 @@ export function CreateShopForm({
     "mt-1.5 w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20";
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="rounded-2xl border border-border bg-surface p-6 shadow-sm"
-    >
-      <div className="mb-6">
-        <h2 className="font-[family-name:var(--font-display)] text-xl tracking-tight">
-          Shop details
-        </h2>
-        <p className="mt-1 text-sm text-muted">
-          Fill in location, contact, and operating hours.
-        </p>
-      </div>
-
+    <form onSubmit={handleSubmit}>
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="block sm:col-span-2">
           <span className="text-sm font-medium">Shop name</span>
@@ -263,7 +300,7 @@ export function CreateShopForm({
             className={inputClass}
             value={form.name}
             onChange={(e) => update("name", e.target.value)}
-            placeholder="EE - Ground Floor"
+            placeholder="Building or block name"
             required
           />
           {errors.name ? (
@@ -277,7 +314,7 @@ export function CreateShopForm({
             className={inputClass}
             value={form.address}
             onChange={(e) => update("address", e.target.value)}
-            placeholder="AB-1, COMSATS, Islamabad"
+            placeholder="Street, area, city"
             required
           />
           {errors.address ? (
@@ -309,7 +346,7 @@ export function CreateShopForm({
                     return { lat, lng: prev?.lng ?? 0 };
                   })
                 }
-                placeholder="33.65139"
+                placeholder="00.00000"
                 inputMode="decimal"
               />
             </label>
@@ -326,7 +363,7 @@ export function CreateShopForm({
                     return { lat: prev?.lat ?? 0, lng };
                   })
                 }
-                placeholder="73.15641"
+                placeholder="00.00000"
                 inputMode="decimal"
               />
             </label>
@@ -348,22 +385,24 @@ export function CreateShopForm({
               onChange={(e) => handleImageChange(e.target.files?.[0] ?? null)}
               className="text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-surface-muted file:px-3 file:py-2 file:text-sm file:font-medium"
             />
-            {imagePreview ? (
+            {previewSrc ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={imagePreview}
-                alt={imageName}
+                src={previewSrc}
+                alt={imageName || form.name}
                 className="h-12 w-12 rounded-lg border border-border object-cover"
               />
             ) : null}
           </div>
-          <span className="mt-1 block text-xs text-muted">
-            {isUploading
-              ? "Uploading…"
-              : imageFileId
-                ? `Uploaded ${imageName} (file id ${imageFileId})`
-                : "The image is uploaded first, then linked to the shop."}
-          </span>
+          {isUploading || imageName || imageFileId ? (
+            <span className="mt-1 block text-xs text-muted">
+              {isUploading
+                ? "Uploading…"
+                : imageName
+                  ? imageName
+                  : "Choose a file to replace the current image"}
+            </span>
+          ) : null}
           {errors.imageFile ? (
             <span className="mt-1 block text-xs text-danger">
               {errors.imageFile}
@@ -377,7 +416,7 @@ export function CreateShopForm({
             className={inputClass}
             value={form.contactNumber}
             onChange={(e) => update("contactNumber", e.target.value)}
-            placeholder="03030036076"
+            placeholder="03XXXXXXXXX"
             required
           />
           {errors.contactNumber ? (
@@ -453,28 +492,42 @@ export function CreateShopForm({
               </div>
             ))}
           </div>
-          <span className="mt-1 block text-xs text-muted">
-            Sends: {timingPreview.join(", ")}
-          </span>
           {errors.timings ? (
             <span className="mt-1 block text-xs text-danger">{errors.timings}</span>
           ) : null}
         </div>
       </div>
 
-      <div className="mt-6 flex flex-wrap items-center gap-3">
+      <div
+        className={`mt-6 flex flex-wrap items-center gap-3 ${embedded ? "justify-end" : ""}`}
+      >
+        {message ? (
+          <p className={`mr-auto text-sm ${isSuccess ? "text-accent" : "text-danger"}`}>
+            {message}
+          </p>
+        ) : null}
+        {onCancel ? (
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-4 py-2 border border-border rounded-lg text-sm hover:bg-surface-muted transition"
+          >
+            Cancel
+          </button>
+        ) : null}
         <button
           type="submit"
           disabled={isSubmitting || isUploading}
           className="px-4 py-2 bg-accent text-white rounded-lg text-sm font-medium hover:bg-accent-hover transition disabled:opacity-50"
         >
-          {isSubmitting ? "Creating…" : "Create shop"}
+          {isSubmitting
+            ? isEdit
+              ? "Saving…"
+              : "Creating…"
+            : isEdit
+              ? "Save changes"
+              : "Create shop"}
         </button>
-        {message ? (
-          <p className={`text-sm ${isSuccess ? "text-accent" : "text-danger"}`}>
-            {message}
-          </p>
-        ) : null}
       </div>
     </form>
   );

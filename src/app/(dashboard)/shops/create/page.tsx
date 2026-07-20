@@ -1,4 +1,4 @@
-import { CreateShopForm } from "@/components/create-shop-form";
+import { ShopForm } from "@/components/shop-form";
 
 export default function CreateShopPage() {
   return (
@@ -15,7 +15,7 @@ export default function CreateShopPage() {
         </p>
       </header>
 
-      <CreateShopForm />
+      <ShopForm />
     </div>
   );
 }

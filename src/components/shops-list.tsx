@@ -5,9 +5,9 @@ import Link from "next/link";
 import { useAuth } from "@/components/auth-provider";
 import type { ListShopsResponse, Shop } from "@/lib/types";
 import { StatCard } from "@/components/ui/stat-card";
-import { ShopIcon, EyeIcon, PencilIcon, TrashIcon, RefreshIcon, PlusIcon } from "@/components/icons";
+import { ShopIcon, EyeIcon, PencilIcon, TrashIcon, RefreshIcon, PlusIcon, PowerIcon, WifiIcon, WifiOffIcon } from "@/components/icons";
 import { Modal } from "@/components/ui/modal";
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from "recharts";
+import { ShopForm } from "@/components/shop-form";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -19,25 +19,43 @@ interface ShopStats {
   disabled: number;
 }
 
-interface Job {
-  _id: string;
-  shop?: { _id: string; name: string };
-  [key: string]: unknown;
-}
-
 // Timings arrive as a fixed 7-entry array, Monday first.
-const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const DAY_LABELS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
-const COLORS = {
-  online: "var(--color-accent)",
-  offline: "var(--color-warning)",
-  disabled: "var(--color-danger)"
-};
+/**
+ * Shops carry an `imageFile` id; the bytes come from the authenticated
+ * /api/files proxy. Older records may still only have a plain `imageUrl`.
+ */
+function ShopImage({ shop, token, className }: { shop: Shop; token: string | null; className: string }) {
+  const [failed, setFailed] = useState(false);
+
+  const src = shop.imageFile && token
+    ? `/api/files/${shop.imageFile}?token=${encodeURIComponent(token)}`
+    : shop.imageUrl;
+
+  if (!src || failed) {
+    return (
+      <div className={`${className} flex items-center justify-center rounded-lg bg-surface-muted text-muted`}>
+        <ShopIcon className="w-4 h-4" />
+      </div>
+    );
+  }
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt={shop.name}
+      onError={() => setFailed(true)}
+      className={`${className} rounded-lg border border-border object-cover`}
+    />
+  );
+}
 
 function StatusPill({ online, disabled }: { online?: boolean; disabled?: boolean }) {
   if (online) return <span className="rounded-md bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent">Online</span>;
-  if (disabled) return <span className="rounded-md bg-danger-soft px-2 py-0.5 text-xs font-medium text-danger">Disabled</span>;
-  return <span className="rounded-md bg-surface-muted px-2 py-0.5 text-xs font-medium text-muted">Offline</span>;
+  if (disabled) return <span className="rounded-md bg-surface-muted px-2 py-0.5 text-xs font-medium text-muted">Disabled</span>;
+  return <span className="rounded-md bg-danger-soft px-2 py-0.5 text-xs font-medium text-danger">Offline</span>;
 }
 
 function extractShops(data: ListShopsResponse & Record<string, unknown>): Shop[] {
@@ -63,14 +81,13 @@ export function ShopsList() {
   const { token } = useAuth();
   const [shops, setShops] = useState<Shop[]>([]);
   const [shopStats, setShopStats] = useState<ShopStats | null>(null);
-  const [mostActiveShop, setMostActiveShop] = useState<string>("—");
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [selectedShop, setSelectedShop] = useState<Shop | null>(null);
-  const [modalMode, setModalMode] = useState<"view" | "edit" | "delete" | null>(null);
+  const [modalMode, setModalMode] = useState<"view" | "edit" | "delete" | "toggle" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -80,9 +97,11 @@ export function ShopsList() {
 
   // Column visibility
   const [cols, setCols] = useState({
+    image: true,
     name: true,
     address: true,
     contact: true,
+    maps: true,
     status: true,
     actions: true
   });
@@ -94,21 +113,16 @@ export function ShopsList() {
     setError(null);
 
     try {
-      // Fetch shops list, stats, and jobs in parallel
-      const [shopsRes, statsRes, jobsRes] = await Promise.all([
+      // Fetch shops list and stats in parallel
+      const [shopsRes, statsRes] = await Promise.all([
         fetch("/api/shops",       { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }),
         fetch("/api/stats/shops", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }),
-        fetch("/api/jobs",        { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }),
       ]);
 
-      
-      const [shopsData, statsData, jobsData] = await Promise.all([
+      const [shopsData, statsData] = await Promise.all([
         shopsRes.json(),
         statsRes.json(),
-        jobsRes.json(),
       ]);
-
-      
 
       if (!shopsRes.ok || shopsData.success === false) {
         setError(shopsData.error || shopsData.message || "Failed to load shops");
@@ -122,22 +136,6 @@ export function ShopsList() {
       if (statsData.success && statsData.data) {
         console.log("backend shops stats", statsData.data)
         setShopStats(statsData.data.stats as ShopStats);
-      }
-
-      // Calculate most active shop from jobs
-      if (jobsData.success && Array.isArray(jobsData.data?.jobs)) {
-        const jobs = jobsData.data.jobs as Job[];
-        const countByShop: Record<string, { name: string; count: number }> = {};
-        for (const job of jobs) {
-          if (job.shop?._id) {
-            if (!countByShop[job.shop._id]) {
-              countByShop[job.shop._id] = { name: job.shop.name, count: 0 };
-            }
-            countByShop[job.shop._id].count++;
-          }
-        }
-        const topShop = Object.values(countByShop).sort((a, b) => b.count - a.count)[0];
-        setMostActiveShop(topShop ? `${topShop.name} (${topShop.count})` : "—");
       }
     } catch {
       setError("Network error while loading shops");
@@ -180,12 +178,6 @@ export function ShopsList() {
     return { shops: total, online, offline, disabled };
   }, [shopStats, shops]);
 
-  const chartData = [
-    { name: 'Online', value: displayStats.online, color: COLORS.online },
-    { name: 'Offline', value: displayStats.offline, color: COLORS.offline },
-    { name: 'Disabled', value: displayStats.disabled, color: COLORS.disabled },
-  ].filter(d => d.value > 0);
-
   const totalPages = Math.ceil(filtered.length / pageSize) || 1;
   const paginatedData = filtered.slice((page - 1) * pageSize, page * pageSize);
 
@@ -193,17 +185,19 @@ export function ShopsList() {
     const doc = new jsPDF();
     doc.text("Shops Report", 14, 15);
     
-    const headers = [];
+    const headers = ["#"];
     if (cols.name) headers.push("Name");
     if (cols.address) headers.push("Address");
     if (cols.contact) headers.push("Contact");
+    if (cols.maps) headers.push("Google Maps");
     if (cols.status) headers.push("Status");
-    
-    const tableData = filtered.map(shop => {
-      const row = [];
+
+    const tableData = filtered.map((shop, index) => {
+      const row = [String(index + 1)];
       if (cols.name) row.push(shop.name);
       if (cols.address) row.push(shop.address);
       if (cols.contact) row.push(shop.contactNumber || "—");
+      if (cols.maps) row.push(shop.googleMapsLink || "—");
       if (cols.status) row.push(shop.isDisabled ? "Disabled" : shop.isOnline ? "Online" : "Offline");
       return row;
     });
@@ -219,7 +213,7 @@ export function ShopsList() {
     doc.save("shops-report.pdf");
   };
 
-  const openModal = (shop: Shop, mode: "view" | "edit" | "delete") => {
+  const openModal = (shop: Shop, mode: "view" | "edit" | "delete" | "toggle") => {
     setSelectedShop(shop);
     setModalMode(mode);
     setActionError(null);
@@ -230,32 +224,32 @@ export function ShopsList() {
     setSelectedShop(null);
   };
 
-  const handleEditSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleToggleDisabled = async () => {
     if (!selectedShop || !token) return;
     setBusy(true);
     setActionError(null);
-    
+
+    const nextDisabled = !selectedShop.isDisabled;
+
     try {
-      // In this minimal frontend pass, we just hit the PUT endpoint, expecting an error.
-      const response = await fetch(`/api/shops/${selectedShop._id}`, {
-        method: "PUT",
+      const response = await fetch(`/api/shops/${selectedShop._id}/isDisabled`, {
+        method: "PATCH",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ name: selectedShop.name }), // sending dummy update to trigger backend response
+        body: JSON.stringify({ isDisabled: nextDisabled }),
       });
       const data = await response.json();
-      
+
       if (!response.ok || data.success === false) {
-        setActionError(data.error || "Backend endpoint missing or failed. Showing real error.");
+        setActionError(data.error || data.message || "Failed to update shop status");
       } else {
         closeModal();
         load();
       }
-    } catch (err) {
-      setActionError("Network error calling PUT /api/shops/:id");
+    } catch {
+      setActionError("Network error calling PATCH /api/shops/:id/isDisabled");
     } finally {
       setBusy(false);
     }
@@ -306,43 +300,11 @@ export function ShopsList() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 grid grid-cols-2 sm:grid-cols-3 gap-4">
-          <StatCard label="Total Shops" value={displayStats.shops} icon={<ShopIcon />} accentColor="accent" />
-          <StatCard label="Most Active" value={mostActiveShop.includes("(") ? mostActiveShop.split(" (")[0] : mostActiveShop} accentColor="print-request" />
-          <StatCard label="Online" value={displayStats.online} accentColor="accent" />
-          <StatCard label="Offline" value={displayStats.offline} accentColor="warning" />
-          <StatCard label="Disabled" value={displayStats.disabled} accentColor="danger" />
-        </div>
-        <div className="bg-surface rounded-xl border border-border p-4 shadow-sm flex flex-col">
-          <h3 className="text-sm font-medium text-muted mb-2">Status Breakdown</h3>
-          <div className="flex-1 min-h-[160px]">
-            {chartData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={chartData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={60} stroke="none" startAngle={90} endAngle={-270}>
-                    {chartData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
-                  </Pie>
-                  <RechartsTooltip contentStyle={{ borderRadius: '8px', border: '1px solid var(--color-border)' }} />
-                  <Legend 
-                    content={() => (
-                      <ul className="flex flex-wrap justify-center gap-4 text-sm mt-2">
-                        {chartData.map((entry, index) => (
-                          <li key={`item-${index}`} className="flex items-center gap-1.5">
-                            <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: entry.color }}></span>
-                            <span className="text-muted">{entry.name}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="flex h-full items-center justify-center text-sm text-muted">No data available</div>
-            )}
-          </div>
-        </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard label="Total Shops" value={displayStats.shops} icon={<ShopIcon className="w-5 h-5" />} accentColor="accent" />
+        <StatCard label="Online" value={displayStats.online} icon={<WifiIcon className="w-5 h-5" />} accentColor="accent" colorValue />
+        <StatCard label="Offline" value={displayStats.offline} icon={<WifiOffIcon className="w-5 h-5" />} accentColor="danger" colorValue />
+        <StatCard label="Disabled" value={displayStats.disabled} icon={<PowerIcon className="w-5 h-5" />} accentColor="neutral" colorValue />
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -406,38 +368,67 @@ export function ShopsList() {
           <table className="w-full text-left text-sm whitespace-nowrap">
             <thead className="bg-surface-muted/50 text-muted">
               <tr>
+                <th className="px-4 py-3 font-medium w-12">#</th>
+                {cols.image && <th className="px-4 py-3 font-medium">Image</th>}
                 {cols.name && <th className="px-4 py-3 font-medium">Name</th>}
                 {cols.address && <th className="px-4 py-3 font-medium">Address</th>}
                 {cols.contact && <th className="px-4 py-3 font-medium">Contact</th>}
+                {cols.maps && <th className="px-4 py-3 font-medium">Google Maps</th>}
                 {cols.status && <th className="px-4 py-3 font-medium">Status</th>}
                 {cols.actions && <th className="px-4 py-3 font-medium text-right">Actions</th>}
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-muted">Loading shops...</td></tr>
+                <tr><td colSpan={8} className="px-4 py-8 text-center text-muted">Loading shops...</td></tr>
               ) : paginatedData.length === 0 ? (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-muted">No shops found.</td></tr>
+                <tr><td colSpan={8} className="px-4 py-8 text-center text-muted">No shops found.</td></tr>
               ) : (
-                paginatedData.map(shop => {
+                paginatedData.map((shop, index) => {
                   const addressDisplay = shop.address.length > 15 ? shop.address.substring(0, 15) + "..." : shop.address;
                   return (
-                    <tr 
-                      key={shop._id} 
+                    <tr
+                      key={shop._id}
                       className="border-b border-border last:border-0 hover:bg-surface-muted/30 cursor-pointer transition-colors"
                       onClick={() => openModal(shop, "view")}
                     >
+                      <td className="px-4 py-3 text-muted tabular-nums">{(page - 1) * pageSize + index + 1}</td>
+                      {cols.image && (
+                        <td className="px-4 py-3"><ShopImage shop={shop} token={token} className="h-10 w-10" /></td>
+                      )}
                       {cols.name && (
                         <td className="px-4 py-3 font-medium">{shop.name}</td>
                       )}
                       {cols.address && <td className="px-4 py-3 text-muted max-w-[200px]" title={shop.address}>{addressDisplay}</td>}
                       {cols.contact && <td className="px-4 py-3 text-muted">{shop.contactNumber || "—"}</td>}
+                      {cols.maps && (
+                        <td className="px-4 py-3">
+                          {shop.googleMapsLink ? (
+                            <a
+                              href={shop.googleMapsLink}
+                              target="_blank"
+                              rel="noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="text-accent hover:underline"
+                            >
+                              Open in Maps
+                            </a>
+                          ) : <span className="text-muted">—</span>}
+                        </td>
+                      )}
                       {cols.status && <td className="px-4 py-3"><StatusPill online={shop.isOnline} disabled={shop.isDisabled} /></td>}
                       {cols.actions && (
                         <td className="px-4 py-3">
                           <div className="flex justify-end gap-2">
                             <button onClick={(e) => { e.stopPropagation(); openModal(shop, "view"); }} className="p-1.5 text-muted hover:text-foreground transition"><EyeIcon className="w-4 h-4" /></button>
                             <button onClick={(e) => { e.stopPropagation(); openModal(shop, "edit"); }} className="p-1.5 text-muted hover:text-accent transition"><PencilIcon className="w-4 h-4" /></button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); openModal(shop, "toggle"); }}
+                              title={shop.isDisabled ? "Enable shop" : "Disable shop"}
+                              className={`p-1.5 text-muted transition ${shop.isDisabled ? "hover:text-accent" : "hover:text-danger"}`}
+                            >
+                              <PowerIcon className="w-4 h-4" />
+                            </button>
                             <button onClick={(e) => { e.stopPropagation(); openModal(shop, "delete"); }} className="p-1.5 text-muted hover:text-danger transition"><TrashIcon className="w-4 h-4" /></button>
                           </div>
                         </td>
@@ -477,9 +468,10 @@ export function ShopsList() {
         )}
       </div>
 
-      <Modal isOpen={modalMode === "view"} onClose={closeModal} title="Shop Details">
+      <Modal isOpen={modalMode === "view"} onClose={closeModal} title="Shop Details" size="lg">
         {selectedShop && (
           <div className="space-y-4">
+            <ShopImage shop={selectedShop} token={token} className="h-32 w-full" />
             <div className="grid grid-cols-2 gap-4">
               <div><p className="text-xs text-muted mb-1">Name</p><p className="font-medium">{selectedShop.name}</p></div>
               <div><p className="text-xs text-muted mb-1">Status</p><StatusPill online={selectedShop.isOnline} disabled={selectedShop.isDisabled} /></div>
@@ -493,9 +485,9 @@ export function ShopsList() {
               </div>
               <div className="col-span-2">
                 <p className="text-xs text-muted mb-1">Timings</p>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                <div className="divide-y divide-border rounded-lg border border-border text-sm">
                   {DAY_LABELS.map((day, i) => (
-                    <div key={day} className="flex justify-between whitespace-normal">
+                    <div key={day} className="flex justify-between whitespace-normal px-3 py-2">
                       <span className="text-muted">{day}</span>
                       <span className="font-medium">{selectedShop.timings?.[i] || "—"}</span>
                     </div>
@@ -507,20 +499,49 @@ export function ShopsList() {
         )}
       </Modal>
 
-      <Modal isOpen={modalMode === "edit"} onClose={closeModal} title="Edit Shop">
+      <Modal isOpen={modalMode === "edit"} onClose={closeModal} title="Edit Shop" size="xl">
         {selectedShop && (
-          <form onSubmit={handleEditSubmit} className="space-y-4">
+          <ShopForm
+            // Remount when switching shops so the form re-seeds its state.
+            key={selectedShop._id}
+            shop={selectedShop}
+            embedded
+            onCancel={closeModal}
+            onSaved={() => {
+              closeModal();
+              load();
+            }}
+          />
+        )}
+      </Modal>
+
+      <Modal
+        isOpen={modalMode === "toggle"}
+        onClose={closeModal}
+        title={selectedShop?.isDisabled ? "Enable Shop" : "Disable Shop"}
+      >
+        {selectedShop && (
+          <div className="space-y-4">
             {actionError && <div className="bg-danger-soft text-danger p-3 rounded-lg text-sm">{actionError}</div>}
-            <div>
-              <label className="block text-sm font-medium mb-1">Name</label>
-              <input type="text" value={selectedShop.name} readOnly className="w-full border border-border rounded-lg px-3 py-2 opacity-70 bg-surface-muted" />
-            </div>
-            <p className="text-xs text-muted">Admin-edit of shops is currently unsupported in the backend. Submitting will trigger a 403 error.</p>
+            <p className="text-sm">
+              {selectedShop.isDisabled ? (
+                <>Enable <strong>{selectedShop.name}</strong>? It will become visible to customers again.</>
+              ) : (
+                <>Disable <strong>{selectedShop.name}</strong>? Customers will no longer be able to send it print jobs.</>
+              )}
+            </p>
             <div className="flex justify-end gap-2 mt-6">
               <button type="button" onClick={closeModal} className="px-4 py-2 border border-border rounded-lg text-sm hover:bg-surface-muted transition">Cancel</button>
-              <button type="submit" disabled={busy} className="px-4 py-2 bg-accent text-white rounded-lg text-sm font-medium hover:bg-accent-hover transition disabled:opacity-50">Save Changes</button>
+              <button
+                type="button"
+                onClick={handleToggleDisabled}
+                disabled={busy}
+                className={`px-4 py-2 rounded-lg text-sm font-medium text-white transition disabled:opacity-50 ${selectedShop.isDisabled ? "bg-accent hover:bg-accent-hover" : "bg-danger hover:bg-danger/90"}`}
+              >
+                {busy ? "Saving…" : selectedShop.isDisabled ? "Enable Shop" : "Disable Shop"}
+              </button>
             </div>
-          </form>
+          </div>
         )}
       </Modal>
 
