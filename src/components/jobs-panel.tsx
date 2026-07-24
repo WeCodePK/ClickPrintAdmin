@@ -277,6 +277,13 @@ export function JobsPanel() {
     return s === "submitted" || s === "queued";
   };
 
+  const formatCost = (cost: any) => {
+    if (cost === null || cost === undefined) return "—";
+    if (typeof cost === "number") return cost;
+    if (typeof cost === "object" && typeof cost.total === "number") return cost.total;
+    return "—";
+  };
+
   return (
     <div className="space-y-6">
       {/* Top right refresh icon */}
@@ -409,9 +416,9 @@ export function JobsPanel() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={5} className="px-4 py-12 text-center text-muted">Loading {tab}…</td></tr>
+                <tr><td colSpan={6} className="px-4 py-12 text-center text-muted">Loading {tab}…</td></tr>
               ) : paginatedData.length === 0 ? (
-                <tr><td colSpan={5} className="px-4 py-12 text-center text-muted">No {tab} in this view.</td></tr>
+                <tr><td colSpan={6} className="px-4 py-12 text-center text-muted">No {tab} in this view.</td></tr>
               ) : (
                 paginatedData.map((item, index) => {
                   const status = normalizeStatus(item.status);
@@ -433,7 +440,7 @@ export function JobsPanel() {
                           {phone ? <div className="mt-0.5 text-xs text-muted">{phone}</div> : null}
                         </td>
                       )}
-                      {cols.cost && <td className="px-4 py-4 text-muted">{item.cost || "—"}</td>}
+                      {cols.cost && <td className="px-4 py-4 text-muted">{formatCost(item.cost)}</td>}
                       {cols.createdAt && <td className="px-4 py-4 text-muted">{formatWhen(item.createdAt)}</td>}
                       {cols.actions && (
                         <td className="px-4 py-4">
@@ -486,7 +493,7 @@ export function JobsPanel() {
             <div className="grid grid-cols-2 gap-4">
               <div><p className="text-xs text-muted mb-1">Status</p>{tab === "jobs" ? <JobStatusBadge status={normalizeStatus(selectedJob.status)} /> : <HistoryStatusBadge status={normalizeStatus(selectedJob.status)} />}</div>
               <div><p className="text-xs text-muted mb-1">Created By</p><p className="font-medium">{createdByLabel(selectedJob)}</p></div>
-              <div><p className="text-xs text-muted mb-1">Cost</p><p className="font-medium">{selectedJob.cost || "—"}</p></div>
+              <div><p className="text-xs text-muted mb-1">Cost</p><p className="font-medium">{formatCost(selectedJob.cost)}</p></div>
               <div><p className="text-xs text-muted mb-1">Created At</p><p className="font-medium">{formatWhen(selectedJob.createdAt)}</p></div>
             </div>
           </div>

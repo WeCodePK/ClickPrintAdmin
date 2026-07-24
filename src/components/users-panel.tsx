@@ -7,6 +7,7 @@ import { DEMO_USERS, DEMO_METRICS } from "@/lib/demo-data";
 import { StatCard } from "@/components/ui/stat-card";
 import { UsersIcon, PencilIcon, TrashIcon, RefreshIcon, ShieldIcon, CrownIcon, PlusIcon, ShopIcon, PowerIcon } from "@/components/icons";
 import { Modal } from "@/components/ui/modal";
+import { log } from "console";
 
 function formatWhen(iso?: string) {
   if (!iso) return "—";
@@ -216,11 +217,12 @@ export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
       }
 
       const data = await response.json();
-
+    
       if (data.success === false || !data.data?.users) {
         setUsers(DEMO_USERS);
         setIsDemo(true);
       } else {
+        
         setUsers(data.data.users);
       }
     } catch {
@@ -953,11 +955,18 @@ export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
                     <>
                       {admins.map((admin, idx) => {
                         const adminIdObj = admin._id as any;
-                        const adminId = adminIdObj?._id || adminIdObj?.$oid || String(idx);
-                        const userName = adminIdObj?.name || "—";
-                        const userNumber = adminIdObj?.number || "—";
+                        const adminStr = typeof adminIdObj === 'string' ? adminIdObj : '';
+                        const possibleId = adminIdObj?._id || adminIdObj?.$oid || adminStr || (admin as any).user?._id || (typeof (admin as any).user === 'string' ? (admin as any).user : String(idx));
+                        const matchedUser = users.find(u => String(u._id) === String(possibleId));
+                        
+                        const userName = adminIdObj?.name || matchedUser?.name || "—";
+                        const userNumber = adminIdObj?.number || matchedUser?.number || "—";
+                        
+                        // Use matchedUser's id as a reliable key if available
+                        const rowKey = matchedUser?._id || possibleId || String(idx);
+                        
                         return (
-                        <tr key={adminId} className="border-b border-border last:border-0 hover:bg-surface-muted/30 cursor-pointer transition-colors">
+                        <tr key={rowKey} className="border-b border-border last:border-0 hover:bg-surface-muted/30 cursor-pointer transition-colors">
                           <td className="px-4 py-3 text-muted tabular-nums">{idx + 1}</td>
                           <td className="px-4 py-3 font-medium">{userName}</td>
                           <td className="px-4 py-3 text-muted">{userNumber}</td>
@@ -1024,7 +1033,14 @@ export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
             {selectedAdmin && (
               <div className="space-y-4">
                 {actionError && <div className="bg-danger-soft text-danger p-3 rounded-lg text-sm">{actionError}</div>}
-                <p className="text-sm">Are you sure you want to dismiss <strong>{(selectedAdmin._id as any)?.name || (selectedAdmin._id as any)?.number || "this admin"}</strong> as an admin?</p>
+                <p className="text-sm">Are you sure you want to dismiss <strong>{
+                  (() => {
+                    const idObj = selectedAdmin._id as any;
+                    const id = idObj?._id || idObj?.$oid || (typeof idObj === 'string' ? idObj : '');
+                    const u = users.find(user => user._id === id);
+                    return idObj?.name || idObj?.number || u?.name || u?.number || "this admin";
+                  })()
+                }</strong> as an admin?</p>
                 <div className="flex justify-end gap-2 mt-6">
                   <button type="button" onClick={() => { setModalMode(null); setSelectedAdmin(null); setActionError(null); }} className="px-4 py-2 border border-border rounded-lg text-sm hover:bg-surface-muted transition">Cancel</button>
                   <button type="button" onClick={handleDismissAdmin} disabled={busy} className="px-4 py-2 bg-danger text-white rounded-lg text-sm font-medium hover:bg-danger/90 transition disabled:opacity-50">Confirm Dismiss</button>
@@ -1065,7 +1081,13 @@ export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
                     <tr><td colSpan={7} className="px-4 py-8 text-center text-muted">No owners yet.</td></tr>
                   ) : (
                     owners.map((owner, idx) => {
-                      const ownerUser = typeof owner.user === "string" ? null : owner.user;
+                      const ownerUserId = typeof owner.user === "string" ? owner.user : (owner.user as any)?._id;
+                      let ownerUser = typeof owner.user === "string" ? null : owner.user;
+                      if (!ownerUser?.name) {
+                        const matched = users.find(u => String(u._id) === String(ownerUserId));
+                        if (matched) ownerUser = { ...ownerUser, name: matched.name, number: matched.number } as any;
+                      }
+
                       const ownerShop = typeof owner.shop === "string" ? null : owner.shop;
                       const appointedBy = typeof owner.appointedBy === "string" ? null : owner.appointedBy;
                       return (
