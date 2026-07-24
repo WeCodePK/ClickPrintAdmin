@@ -12,13 +12,7 @@ function normalizeStatus(value: unknown): string {
   return value.toLowerCase();
 }
 
-function formatWhen(iso?: string) {
-  if (!iso) return "—";
-  return new Intl.DateTimeFormat("en-PK", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(iso));
-}
+
 
 function StatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
@@ -83,7 +77,8 @@ export function DraftsPanel() {
   const [cols, setCols] = useState({
     status: true,
     createdBy: true,
-    createdAt: true,
+    shop: true,
+    files: true,
     actions: true
   });
   const [colsMenuOpen, setColsMenuOpen] = useState(false);
@@ -98,7 +93,7 @@ export function DraftsPanel() {
       });
       const data = await response.json();
 
-      console.log("backend draft stats", data.data)
+      console.log("backend draft stats", data.data.stats)
       if (!response.ok || data.success === false) {
         console.error("Failed to load draft stats");
         return;
@@ -125,6 +120,7 @@ export function DraftsPanel() {
         cache: "no-store",
       });
       const data = await response.json();
+      
 
       if (!response.ok || data.success === false) {
         setError(data.error || data.message || "Failed to load drafts");
@@ -155,7 +151,6 @@ export function DraftsPanel() {
       return matchStatus && matchQuery;
     });
   }, [drafts, view, query]);
-
   // Reset page when filters change
   useEffect(() => {
     setPage(1);
@@ -268,15 +263,16 @@ export function DraftsPanel() {
                 <th className="px-4 py-3 font-medium w-12">#</th>
                 {cols.status && <th className="px-4 py-3 font-medium">Status</th>}
                 {cols.createdBy && <th className="px-4 py-3 font-medium">Created by</th>}
-                {cols.createdAt && <th className="px-4 py-3 font-medium">Created At</th>}
+                {cols.shop && <th className="px-4 py-3 font-medium">Shop</th>}
+                {cols.files && <th className="px-4 py-3 font-medium">Files</th>}
                 {cols.actions && <th className="px-4 py-3 font-medium text-right">Actions</th>}
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={4} className="px-4 py-12 text-center text-muted">Loading drafts…</td></tr>
+                <tr><td colSpan={Object.values(cols).filter(Boolean).length + 1} className="px-4 py-12 text-center text-muted">Loading drafts…</td></tr>
               ) : paginatedData.length === 0 ? (
-                <tr><td colSpan={4} className="px-4 py-12 text-center text-muted">No drafts in this view.</td></tr>
+                <tr><td colSpan={Object.values(cols).filter(Boolean).length + 1} className="px-4 py-12 text-center text-muted">No drafts in this view.</td></tr>
               ) : (
                 paginatedData.map((draft, index) => {
                   const status = normalizeStatus(draft.status);
@@ -297,7 +293,16 @@ export function DraftsPanel() {
                           {phone ? <div className="mt-0.5 text-xs text-muted">{phone}</div> : null}
                         </td>
                       )}
-                      {cols.createdAt && <td className="px-4 py-4 text-muted">{formatWhen(draft.createdAt)}</td>}
+                      {cols.shop && (
+                        <td className="px-4 py-4 text-muted">
+                          {typeof draft.shop === "object" && draft.shop?.name ? draft.shop.name : "—"}
+                        </td>
+                      )}
+                      {cols.files && (
+                        <td className="px-4 py-4 text-muted tabular-nums">
+                          {draft.files?.length ?? 0}
+                        </td>
+                      )}
                       {cols.actions && (
                         <td className="px-4 py-4">
                           <div className="flex justify-end items-center gap-2">
@@ -347,7 +352,8 @@ export function DraftsPanel() {
             <div className="grid grid-cols-2 gap-4">
               <div><p className="text-xs text-muted mb-1">Status</p><StatusBadge status={normalizeStatus(selectedDraft.status)} /></div>
               <div><p className="text-xs text-muted mb-1">Created By</p><p className="font-medium">{createdByLabel(selectedDraft)}</p></div>
-              <div><p className="text-xs text-muted mb-1">Created At</p><p className="font-medium">{formatWhen(selectedDraft.createdAt)}</p></div>
+              <div><p className="text-xs text-muted mb-1">Shop</p><p className="font-medium">{typeof selectedDraft.shop === "object" && selectedDraft.shop?.name ? selectedDraft.shop.name : "—"}</p></div>
+              <div><p className="text-xs text-muted mb-1">Files</p><p className="font-medium">{selectedDraft.files?.length ?? 0} file{(selectedDraft.files?.length ?? 0) !== 1 ? "s" : ""}</p></div>
             </div>
           </div>
         )}

@@ -214,7 +214,7 @@ export function TopUpsPanel() {
       if (cols.amount) row.push(formatMoney(topup.amount));
       if (cols.requestedBy) row.push(createdByLabel(topup));
       if (cols.attachment) {
-        const file = topup.ppfid;
+        const file = topup.paymentProofFile;
         if (!file) row.push("—");
         else if (typeof file === "string") row.push(file);
         else row.push(file.originalName || file._id || "—");

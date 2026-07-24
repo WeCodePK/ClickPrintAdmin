@@ -182,6 +182,7 @@ export function JobsPanel() {
         setJobs([]);
         return;
       }
+      console.log("extracted jobs", extractJobs(data))
       setJobs(extractJobs(data));
     } catch {
       setError("Network error while loading jobs");
@@ -360,7 +361,6 @@ export function JobsPanel() {
                 <option value="submitted">Submitted</option>
                 <option value="queued">Queued</option>
                 <option value="printing">Printing</option>
-                <option value="cancelled">Cancelled</option>
               </>
             ) : (
               <>
