@@ -104,7 +104,7 @@ export interface TopUp {
   _id: string;
   status: TopUpStatus | string;
   amount: number;
-  ppfid?: TopUpFile | string | null;
+  paymentProofFile?: TopUpFile | string | null;
   createdAt: string;
   createdBy?: TopUpUser | string | null;
 }

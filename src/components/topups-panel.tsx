@@ -66,26 +66,33 @@ function createdByLabel(topup: TopUp) {
   return by.name || by.number || by._id;
 }
 
-function attachmentLabel(topup: TopUp, token: string | null, truncate: boolean = false) {
-  const file = topup.ppfid;
+function attachmentLabel(topup: TopUp, truncate: boolean = false) {
+  const file = topup.paymentProofFile;
   if (!file) return "—";
-  if (typeof file === "string") return file;
-  
-  let name = file.originalName || file._id || "";
-  if (truncate && name.length > 20) {
-    name = name.substring(0, 15) + "...";
+
+  let fileId = "";
+  let name = "";
+
+  if (typeof file === "string") {
+    fileId = file;
+    name = file.length > 20 ? file.substring(0, 15) + "..." : file;
+  } else if (typeof file === "object") {
+    fileId = file._id || "";
+    name = file.originalName || file._id || "";
+    if (truncate && name.length > 20) {
+      name = name.substring(0, 15) + "...";
+    }
   }
 
-  if (file._id && token) {
-    const url = `/api/files/${file._id}?token=${token}&name=${encodeURIComponent(file.originalName || file._id)}`;
-    return (
-      <a href={url} target="_blank" rel="noopener noreferrer" className={`text-accent hover:underline font-medium inline-flex items-center gap-1 ${truncate ? "max-w-[150px] truncate" : "break-all"}`} onClick={e => e.stopPropagation()} title={file.originalName || file._id}>
-        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
-        <span className={truncate ? "truncate" : ""}>{name}</span>
-      </a>
-    );
-  }
-  return <span className={truncate ? "truncate max-w-[150px] inline-block" : "break-all"} title={name}>{name}</span>;
+  if (!fileId) return "—";
+
+  const url = `/api/files/${fileId}`;
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer" className={`text-accent hover:underline font-medium inline-flex items-center gap-1 ${truncate ? "max-w-[150px] truncate" : "break-all"}`} onClick={e => e.stopPropagation()} title={typeof file === "string" ? file : file?.originalName || file?._id}>
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+      <span className={truncate ? "truncate" : ""}>{name}</span>
+    </a>
+  );
 }
 
 const COLORS = {
@@ -409,7 +416,7 @@ export function TopUpsPanel() {
                           {phone ? <div className="mt-0.5 text-xs text-muted">{phone}</div> : null}
                         </td>
                       )}
-                      {cols.attachment && <td className="px-4 py-4 text-muted">{attachmentLabel(topup, token, true)}</td>}
+                      {cols.attachment && <td className="px-4 py-4 text-muted">{attachmentLabel(topup, true)}</td>}
                       {cols.submitted && <td className="px-4 py-4 text-muted">{formatWhen(topup.createdAt)}</td>}
                       {cols.status && <td className="px-4 py-4"><StatusBadge status={status} /></td>}
                       {cols.actions && (
@@ -471,7 +478,7 @@ export function TopUpsPanel() {
               <div><p className="text-xs text-muted mb-1">Submitted At</p><p className="font-medium">{formatWhen(selectedTopup.createdAt)}</p></div>
               <div className="col-span-2">
                 <p className="text-xs text-muted mb-1">Attachment</p>
-                <div className="font-medium text-sm p-3 bg-surface-muted rounded-lg inline-block">{attachmentLabel(selectedTopup, token, false)}</div>
+                <div className="font-medium text-sm p-3 bg-surface-muted rounded-lg inline-block">{attachmentLabel(selectedTopup, false)}</div>
               </div>
             </div>
           </div>
