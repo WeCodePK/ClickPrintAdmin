@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import type { ListJobsResponse, Job, JobStatsData, ListHistoryResponse, HistoryEntry, HistoryStatsData } from "@/lib/types";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import { StatCard } from "@/components/ui/stat-card";
 import { EyeIcon, TrashIcon, RefreshIcon, CheckIcon } from "@/components/icons";
 import { Modal } from "@/components/ui/modal";
@@ -114,6 +116,7 @@ export function JobsPanel() {
     actions: true
   });
   const [colsMenuOpen, setColsMenuOpen] = useState(false);
+  const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
 
   const loadJobStats = useCallback(async () => {
     if (!token) return;
@@ -248,6 +251,63 @@ export function JobsPanel() {
   const totalPages = Math.ceil(visible.length / pageSize) || 1;
   const paginatedData = visible.slice((page - 1) * pageSize, page * pageSize);
 
+  const downloadPDF = () => {
+    const doc = new jsPDF();
+    doc.text(`${tab === "jobs" ? "Jobs" : "History"} Report`, 14, 15);
+
+    const headers = ["#"];
+    if (cols.status) headers.push("Status");
+    if (cols.createdBy) headers.push("Created By");
+    if (cols.cost) headers.push("Cost");
+    if (cols.createdAt) headers.push("Created At");
+
+    const tableData = visible.map((item, index) => {
+      const row = [String(index + 1)];
+      if (cols.status) row.push(normalizeStatus(item.status));
+      if (cols.createdBy) row.push(createdByLabel(item));
+      if (cols.cost) row.push(String(formatCost((item as any).cost)));
+      if (cols.createdAt) row.push(formatWhen(item.createdAt));
+      return row;
+    });
+
+    autoTable(doc, {
+      head: [headers],
+      body: tableData,
+      startY: 20,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [0, 217, 163] }, // accent color
+    });
+
+    doc.save(`${tab === "jobs" ? "jobs" : "history"}-report.pdf`);
+  };
+
+  const downloadCSV = () => {
+    const headers = ["#"];
+    if (cols.status) headers.push("Status");
+    if (cols.createdBy) headers.push("Created By");
+    if (cols.cost) headers.push("Cost");
+    if (cols.createdAt) headers.push("Created At");
+
+    const rows = visible.map((item, index) => {
+      const row = [String(index + 1)];
+      if (cols.status) row.push(`"${normalizeStatus(item.status)}"`);
+      if (cols.createdBy) row.push(`"${createdByLabel(item)}"`);
+      if (cols.cost) row.push(`"${formatCost((item as any).cost)}"`);
+      if (cols.createdAt) row.push(`"${formatWhen(item.createdAt)}"`);
+      return row.join(",");
+    });
+
+    const csvContent = [headers.join(","), ...rows].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `${tab === "jobs" ? "jobs" : "history"}-report.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const handleCancelSubmit = async () => {
     if (!selectedJob || !token || tab !== "jobs") return;
     setBusyId("cancel");
@@ -372,15 +432,33 @@ export function JobsPanel() {
           </select>
         </div>
 
-        {/* Columns Dropdown */}
-        <div className="relative">
-          <button
-            onClick={() => setColsMenuOpen(!colsMenuOpen)}
-            className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-muted transition shadow-sm flex items-center gap-2"
-          >
-            Columns
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-          </button>
+        <div className="flex gap-3 items-center">
+          {/* Download Dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setDownloadMenuOpen(!downloadMenuOpen)}
+              className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-muted transition shadow-sm flex items-center gap-2"
+            >
+              Download
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            {downloadMenuOpen && (
+              <div className="absolute right-0 mt-2 w-32 bg-surface border border-border rounded-lg shadow-lg z-20 overflow-hidden">
+                <button onClick={() => { downloadPDF(); setDownloadMenuOpen(false); }} className="block w-full text-left px-4 py-2 text-sm hover:bg-surface-muted transition">PDF</button>
+                <button onClick={() => { downloadCSV(); setDownloadMenuOpen(false); }} className="block w-full text-left px-4 py-2 text-sm hover:bg-surface-muted transition border-t border-border">CSV</button>
+              </div>
+            )}
+          </div>
+
+          {/* Columns Dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setColsMenuOpen(!colsMenuOpen)}
+              className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-muted transition shadow-sm flex items-center gap-2"
+            >
+              Columns
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
           {colsMenuOpen && (
             <div className="absolute right-0 mt-2 w-48 bg-surface border border-border rounded-lg shadow-lg z-20 p-2">
               {Object.entries(cols).map(([key, isVisible]) => (
@@ -396,6 +474,7 @@ export function JobsPanel() {
               ))}
             </div>
           )}
+        </div>
         </div>
       </div>
 

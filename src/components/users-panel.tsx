@@ -7,7 +7,8 @@ import { DEMO_USERS, DEMO_METRICS } from "@/lib/demo-data";
 import { StatCard } from "@/components/ui/stat-card";
 import { UsersIcon, PencilIcon, TrashIcon, RefreshIcon, ShieldIcon, CrownIcon, PlusIcon, ShopIcon, PowerIcon } from "@/components/icons";
 import { Modal } from "@/components/ui/modal";
-import { log } from "console";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 function formatWhen(iso?: string) {
   if (!iso) return "—";
@@ -41,6 +42,13 @@ export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
   const [search, setSearch] = useState("");
   const [filterRole, setFilterRole] = useState<"all" | "admin" | "user">("all");
 
+  // Admin tab search/filter
+  const [adminSearch, setAdminSearch] = useState("");
+
+  // Owner tab search/filter
+  const [ownerSearch, setOwnerSearch] = useState("");
+  const [ownerShopFilter, setOwnerShopFilter] = useState("all");
+
   const [userStats, setUserStats] = useState<UserStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -66,9 +74,11 @@ export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
 
   // Pagination
   const [page, setPage] = useState(1);
+  const [adminPage, setAdminPage] = useState(1);
+  const [ownerPage, setOwnerPage] = useState(1);
   const pageSize = 10;
 
-  // Column visibility
+  // Column visibility — Users tab
   const [cols, setCols] = useState({
     name: true,
     number: true,
@@ -77,6 +87,29 @@ export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
     actions: true
   });
   const [colsMenuOpen, setColsMenuOpen] = useState(false);
+  const [usersDownloadOpen, setUsersDownloadOpen] = useState(false);
+
+  // Column visibility — Admins tab
+  const [adminCols, setAdminCols] = useState({
+    name: true,
+    phone: true,
+    appointedAt: true,
+    actions: true,
+  });
+  const [adminColsMenuOpen, setAdminColsMenuOpen] = useState(false);
+  const [adminsDownloadOpen, setAdminsDownloadOpen] = useState(false);
+
+  // Column visibility — Owners tab
+  const [ownerCols, setOwnerCols] = useState({
+    name: true,
+    phone: true,
+    shop: true,
+    appointedBy: true,
+    appointedAt: true,
+    actions: true,
+  });
+  const [ownerColsMenuOpen, setOwnerColsMenuOpen] = useState(false);
+  const [ownersDownloadOpen, setOwnersDownloadOpen] = useState(false);
 
   const loadStats = useCallback(async () => {
     if (!token) return;
@@ -245,6 +278,14 @@ export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
     setPage(1);
   }, [search, filterRole]);
 
+  useEffect(() => {
+    setAdminPage(1);
+  }, [adminSearch]);
+
+  useEffect(() => {
+    setOwnerPage(1);
+  }, [ownerSearch, ownerShopFilter]);
+
   const usersWithRoles = useMemo(() => {
     const adminIds = new Set(
       admins.map(admin => {
@@ -268,6 +309,37 @@ export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
     });
   }, [usersWithRoles, search, filterRole]);
 
+  // Filtered admins
+  const visibleAdmins = useMemo(() => {
+    const q = adminSearch.trim().toLowerCase();
+    if (!q) return admins;
+    return admins.filter(admin => {
+      const adminIdObj = admin._id as any;
+      const adminStr = typeof adminIdObj === 'string' ? adminIdObj : '';
+      const possibleId = adminIdObj?._id || adminIdObj?.$oid || adminStr;
+      const matchedUser = users.find(u => String(u._id) === String(possibleId));
+      const name = adminIdObj?.name || matchedUser?.name || "";
+      const number = adminIdObj?.number || matchedUser?.number || "";
+      return name.toLowerCase().includes(q) || number.includes(q);
+    });
+  }, [admins, adminSearch, users]);
+
+  // Filtered owners
+  const visibleOwners = useMemo(() => {
+    const q = ownerSearch.trim().toLowerCase();
+    return owners.filter(owner => {
+      const ownerUser = typeof owner.user === "string" ? null : owner.user;
+      const ownerShop = typeof owner.shop === "string" ? null : owner.shop;
+      const ownerShopId = typeof owner.shop === "string" ? owner.shop : owner.shop?._id;
+      const matchSearch = !q ||
+        ownerUser?.name?.toLowerCase().includes(q) ||
+        ownerUser?.number?.includes(q) ||
+        ownerShop?.name?.toLowerCase().includes(q);
+      const matchShop = ownerShopFilter === "all" ? true : ownerShopId === ownerShopFilter;
+      return matchSearch && matchShop;
+    });
+  }, [owners, ownerSearch, ownerShopFilter]);
+
   const ownedShopIds = useMemo(() => {
     return new Set(
       owners
@@ -278,6 +350,12 @@ export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
 
   const totalPages = Math.ceil(visibleUsers.length / pageSize) || 1;
   const paginatedData = visibleUsers.slice((page - 1) * pageSize, page * pageSize);
+
+  const adminTotalPages = Math.ceil(visibleAdmins.length / pageSize) || 1;
+  const paginatedAdmins = visibleAdmins.slice((adminPage - 1) * pageSize, adminPage * pageSize);
+
+  const ownerTotalPages = Math.ceil(visibleOwners.length / pageSize) || 1;
+  const paginatedOwners = visibleOwners.slice((ownerPage - 1) * pageSize, ownerPage * pageSize);
 
   const openModal = (user: AdminUser, mode: "edit" | "toggle" | "delete") => {
     setSelectedUser(user);
@@ -298,6 +376,203 @@ export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
     setCreateUserForm({ name: "", number: "" });
     setCreateUserError(null);
   };
+
+  // ── PDF downloads ─────────────────────────────────────────────────────────
+
+  const downloadUsersPDF = () => {
+    const doc = new jsPDF();
+    doc.text("Users Report", 14, 15);
+
+    const headers: string[] = [];
+    if (cols.name) headers.push("Name");
+    if (cols.number) headers.push("Phone Number");
+    if (cols.status) headers.push("Role");
+    if (cols.enabled) headers.push("Status");
+
+    const tableData = visibleUsers.map(user => {
+      const row: string[] = [];
+      if (cols.name) row.push(user.name || "—");
+      if (cols.number) row.push(user.number || "—");
+      if (cols.status) row.push(user.isAdmin ? "Admin" : "User");
+      if (cols.enabled) row.push(user.isDisabled ? "Disabled" : "Enabled");
+      return row;
+    });
+
+    autoTable(doc, {
+      head: [headers],
+      body: tableData,
+      startY: 20,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [0, 217, 163] },
+    });
+
+    doc.save("users-report.pdf");
+  };
+
+  const downloadUsersCSV = () => {
+    const headers: string[] = [];
+    if (cols.name) headers.push("Name");
+    if (cols.number) headers.push("Phone Number");
+    if (cols.status) headers.push("Role");
+    if (cols.enabled) headers.push("Status");
+
+    const rows = visibleUsers.map(user => {
+      const row: string[] = [];
+      if (cols.name) row.push(`"${user.name || "—"}"`);
+      if (cols.number) row.push(`"${user.number || "—"}"`);
+      if (cols.status) row.push(`"${user.isAdmin ? "Admin" : "User"}"`);
+      if (cols.enabled) row.push(`"${user.isDisabled ? "Disabled" : "Enabled"}"`);
+      return row.join(",");
+    });
+
+    const csvContent = [headers.join(","), ...rows].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", "users-report.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const downloadAdminsPDF = () => {
+    const doc = new jsPDF();
+    doc.text("Admins Report", 14, 15);
+
+    const headers: string[] = [];
+    if (adminCols.name) headers.push("Name");
+    if (adminCols.phone) headers.push("Phone");
+    if (adminCols.appointedAt) headers.push("Appointed At");
+
+    const tableData = visibleAdmins.map(admin => {
+      const adminIdObj = admin._id as any;
+      const adminStr = typeof adminIdObj === 'string' ? adminIdObj : '';
+      const possibleId = adminIdObj?._id || adminIdObj?.$oid || adminStr;
+      const matchedUser = users.find(u => String(u._id) === String(possibleId));
+      const name = adminIdObj?.name || matchedUser?.name || "—";
+      const number = adminIdObj?.number || matchedUser?.number || "—";
+
+      const row: string[] = [];
+      if (adminCols.name) row.push(name);
+      if (adminCols.phone) row.push(number);
+      if (adminCols.appointedAt) row.push(formatWhen(admin.appointedAt));
+      return row;
+    });
+
+    autoTable(doc, {
+      head: [headers],
+      body: tableData,
+      startY: 20,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [0, 217, 163] },
+    });
+
+    doc.save("admins-report.pdf");
+  };
+
+  const downloadAdminsCSV = () => {
+    const headers: string[] = [];
+    if (adminCols.name) headers.push("Name");
+    if (adminCols.phone) headers.push("Phone");
+    if (adminCols.appointedAt) headers.push("Appointed At");
+
+    const rows = visibleAdmins.map(admin => {
+      const adminIdObj = admin._id as any;
+      const adminStr = typeof adminIdObj === 'string' ? adminIdObj : '';
+      const possibleId = adminIdObj?._id || adminIdObj?.$oid || adminStr;
+      const matchedUser = users.find(u => String(u._id) === String(possibleId));
+      const name = adminIdObj?.name || matchedUser?.name || "—";
+      const number = adminIdObj?.number || matchedUser?.number || "—";
+
+      const row: string[] = [];
+      if (adminCols.name) row.push(`"${name}"`);
+      if (adminCols.phone) row.push(`"${number}"`);
+      if (adminCols.appointedAt) row.push(`"${formatWhen(admin.appointedAt)}"`);
+      return row.join(",");
+    });
+
+    const csvContent = [headers.join(","), ...rows].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", "admins-report.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const downloadOwnersPDF = () => {
+    const doc = new jsPDF();
+    doc.text("Owners Report", 14, 15);
+
+    const headers: string[] = [];
+    if (ownerCols.name) headers.push("Name");
+    if (ownerCols.phone) headers.push("Phone");
+    if (ownerCols.shop) headers.push("Shop");
+    if (ownerCols.appointedBy) headers.push("Appointed By");
+    if (ownerCols.appointedAt) headers.push("Appointed At");
+
+    const tableData = visibleOwners.map(owner => {
+      const ownerUser = typeof owner.user === "string" ? null : owner.user;
+      const ownerShop = typeof owner.shop === "string" ? null : owner.shop;
+      const appointedBy = typeof owner.appointedBy === "string" ? null : owner.appointedBy;
+
+      const row: string[] = [];
+      if (ownerCols.name) row.push(ownerUser?.name || "—");
+      if (ownerCols.phone) row.push(ownerUser?.number || "—");
+      if (ownerCols.shop) row.push(ownerShop?.name || "—");
+      if (ownerCols.appointedBy) row.push(appointedBy?.name || "—");
+      if (ownerCols.appointedAt) row.push(formatWhen(owner.appointedAt));
+      return row;
+    });
+
+    autoTable(doc, {
+      head: [headers],
+      body: tableData,
+      startY: 20,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [0, 217, 163] },
+    });
+
+    doc.save("owners-report.pdf");
+  };
+
+  const downloadOwnersCSV = () => {
+    const headers: string[] = [];
+    if (ownerCols.name) headers.push("Name");
+    if (ownerCols.phone) headers.push("Phone");
+    if (ownerCols.shop) headers.push("Shop");
+    if (ownerCols.appointedBy) headers.push("Appointed By");
+    if (ownerCols.appointedAt) headers.push("Appointed At");
+
+    const rows = visibleOwners.map(owner => {
+      const ownerUser = typeof owner.user === "string" ? null : owner.user;
+      const ownerShop = typeof owner.shop === "string" ? null : owner.shop;
+      const appointedBy = typeof owner.appointedBy === "string" ? null : owner.appointedBy;
+
+      const row: string[] = [];
+      if (ownerCols.name) row.push(`"${ownerUser?.name || "—"}"`);
+      if (ownerCols.phone) row.push(`"${ownerUser?.number || "—"}"`);
+      if (ownerCols.shop) row.push(`"${ownerShop?.name || "—"}"`);
+      if (ownerCols.appointedBy) row.push(`"${appointedBy?.name || "—"}"`);
+      if (ownerCols.appointedAt) row.push(`"${formatWhen(owner.appointedAt)}"`);
+      return row.join(",");
+    });
+
+    const csvContent = [headers.join(","), ...rows].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", "owners-report.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // ── API actions ────────────────────────────────────────────────────────────
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -671,51 +946,68 @@ export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
           )}
 
           <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex gap-4 flex-wrap flex-1">
-          <input
-            type="text"
-            placeholder="Search by name or number..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="border border-border rounded-lg px-4 py-2 bg-surface text-sm w-full md:w-64 shadow-sm"
-          />
-          <select
-            value={filterRole}
-            onChange={e => setFilterRole(e.target.value as any)}
-            className="border border-border rounded-lg px-3 py-2 bg-surface text-sm shadow-sm"
-          >
-            <option value="all">All Roles</option>
-            <option value="user">Regular Users</option>
-            <option value="admin">Admins</option>
-          </select>
-        </div>
-
-        {/* Columns Dropdown */}
-        <div className="relative">
-          <button
-            onClick={() => setColsMenuOpen(!colsMenuOpen)}
-            className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-muted transition shadow-sm flex items-center gap-2"
-          >
-            Columns
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-          </button>
-          {colsMenuOpen && (
-            <div className="absolute right-0 mt-2 w-48 bg-surface border border-border rounded-lg shadow-lg z-20 p-2">
-              {Object.entries(cols).map(([key, isVisible]) => (
-                <label key={key} className="flex items-center gap-2 p-2 hover:bg-surface-muted rounded cursor-pointer text-sm capitalize">
-                  <input
-                    type="checkbox"
-                    checked={isVisible}
-                    onChange={() => setCols(prev => ({ ...prev, [key]: !prev[key as keyof typeof cols] }))}
-                    className="rounded"
-                  />
-                  {key}
-                </label>
-              ))}
+            <div className="flex gap-4 flex-wrap flex-1">
+              <input
+                type="text"
+                placeholder="Search by name or number..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="border border-border rounded-lg px-4 py-2 bg-surface text-sm w-full md:w-64 shadow-sm"
+              />
+              <select
+                value={filterRole}
+                onChange={e => setFilterRole(e.target.value as any)}
+                className="border border-border rounded-lg px-3 py-2 bg-surface text-sm shadow-sm"
+              >
+                <option value="all">All Roles</option>
+                <option value="user">Regular Users</option>
+                <option value="admin">Admins</option>
+              </select>
             </div>
-          )}
-        </div>
-      </div>
+
+            {/* Download Dropdown + Columns Dropdown */}
+            <div className="flex gap-3 items-center">
+              <div className="relative">
+                <button
+                  onClick={() => setUsersDownloadOpen(!usersDownloadOpen)}
+                  className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-muted transition shadow-sm flex items-center gap-2"
+                >
+                  Download
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                </button>
+                {usersDownloadOpen && (
+                  <div className="absolute right-0 mt-2 w-32 bg-surface border border-border rounded-lg shadow-lg z-20 overflow-hidden">
+                    <button onClick={() => { downloadUsersPDF(); setUsersDownloadOpen(false); }} className="block w-full text-left px-4 py-2 text-sm hover:bg-surface-muted transition">PDF</button>
+                    <button onClick={() => { downloadUsersCSV(); setUsersDownloadOpen(false); }} className="block w-full text-left px-4 py-2 text-sm hover:bg-surface-muted transition border-t border-border">CSV</button>
+                  </div>
+                )}
+              </div>
+              <div className="relative">
+                <button
+                  onClick={() => setColsMenuOpen(!colsMenuOpen)}
+                  className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-muted transition shadow-sm flex items-center gap-2"
+                >
+                  Columns
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                </button>
+                {colsMenuOpen && (
+                  <div className="absolute right-0 mt-2 w-48 bg-surface border border-border rounded-lg shadow-lg z-20 p-2">
+                    {Object.entries(cols).map(([key, isVisible]) => (
+                      <label key={key} className="flex items-center gap-2 p-2 hover:bg-surface-muted rounded cursor-pointer text-sm capitalize">
+                        <input
+                          type="checkbox"
+                          checked={isVisible}
+                          onChange={() => setCols(prev => ({ ...prev, [key]: !prev[key as keyof typeof cols] }))}
+                          className="rounded"
+                        />
+                        {key}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
 
       <div className="bg-surface rounded-xl border border-border overflow-hidden">
         <div className="overflow-x-auto">
@@ -934,26 +1226,80 @@ export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
       {/* Admins Tab */}
       {tab === "admins" && (
         <>
+          {/* Search / Download / Columns toolbar */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex gap-4 flex-wrap flex-1">
+              <input
+                type="text"
+                placeholder="Search by name or phone..."
+                value={adminSearch}
+                onChange={e => setAdminSearch(e.target.value)}
+                className="border border-border rounded-lg px-4 py-2 bg-surface text-sm w-full md:w-72 shadow-sm"
+              />
+            </div>
+            <div className="flex gap-3 items-center">
+              <div className="relative">
+                <button
+                  onClick={() => setAdminsDownloadOpen(!adminsDownloadOpen)}
+                  className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-muted transition shadow-sm flex items-center gap-2"
+                >
+                  Download
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                </button>
+                {adminsDownloadOpen && (
+                  <div className="absolute right-0 mt-2 w-32 bg-surface border border-border rounded-lg shadow-lg z-20 overflow-hidden">
+                    <button onClick={() => { downloadAdminsPDF(); setAdminsDownloadOpen(false); }} className="block w-full text-left px-4 py-2 text-sm hover:bg-surface-muted transition">PDF</button>
+                    <button onClick={() => { downloadAdminsCSV(); setAdminsDownloadOpen(false); }} className="block w-full text-left px-4 py-2 text-sm hover:bg-surface-muted transition border-t border-border">CSV</button>
+                  </div>
+                )}
+              </div>
+              <div className="relative">
+                <button
+                  onClick={() => setAdminColsMenuOpen(!adminColsMenuOpen)}
+                  className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-muted transition shadow-sm flex items-center gap-2"
+                >
+                  Columns
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                </button>
+                {adminColsMenuOpen && (
+                  <div className="absolute right-0 mt-2 w-48 bg-surface border border-border rounded-lg shadow-lg z-20 p-2">
+                    {Object.entries(adminCols).map(([key, isVisible]) => (
+                      <label key={key} className="flex items-center gap-2 p-2 hover:bg-surface-muted rounded cursor-pointer text-sm capitalize">
+                        <input
+                          type="checkbox"
+                          checked={isVisible}
+                          onChange={() => setAdminCols(prev => ({ ...prev, [key]: !prev[key as keyof typeof adminCols] }))}
+                          className="rounded"
+                        />
+                        {key.replace(/([A-Z])/g, ' $1').trim()}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
           <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm whitespace-nowrap">
                 <thead className="bg-surface-muted/50 text-muted">
                   <tr>
                     <th className="px-4 py-3 font-medium w-12">#</th>
-                    <th className="px-4 py-3 font-medium">Name</th>
-                    <th className="px-4 py-3 font-medium">Phone</th>
-                    <th className="px-4 py-3 font-medium">Appointed At</th>
-                    <th className="px-4 py-3 font-medium text-right">Actions</th>
+                    {adminCols.name && <th className="px-4 py-3 font-medium">Name</th>}
+                    {adminCols.phone && <th className="px-4 py-3 font-medium">Phone</th>}
+                    {adminCols.appointedAt && <th className="px-4 py-3 font-medium">Appointed At</th>}
+                    {adminCols.actions && <th className="px-4 py-3 font-medium text-right">Actions</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
                     <tr><td colSpan={5} className="px-4 py-8 text-center text-muted">Loading admins…</td></tr>
-                  ) : admins.length === 0 ? (
-                    <tr><td colSpan={5} className="px-4 py-8 text-center text-muted">No admins yet.</td></tr>
+                  ) : paginatedAdmins.length === 0 ? (
+                    <tr><td colSpan={5} className="px-4 py-8 text-center text-muted">{adminSearch ? "No admins match your search." : "No admins yet."}</td></tr>
                   ) : (
                     <>
-                      {admins.map((admin, idx) => {
+                      {paginatedAdmins.map((admin, idx) => {
                         const adminIdObj = admin._id as any;
                         const adminStr = typeof adminIdObj === 'string' ? adminIdObj : '';
                         const possibleId = adminIdObj?._id || adminIdObj?.$oid || adminStr || (admin as any).user?._id || (typeof (admin as any).user === 'string' ? (admin as any).user : String(idx));
@@ -967,26 +1313,28 @@ export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
                         
                         return (
                         <tr key={rowKey} className="border-b border-border last:border-0 hover:bg-surface-muted/30 cursor-pointer transition-colors">
-                          <td className="px-4 py-3 text-muted tabular-nums">{idx + 1}</td>
-                          <td className="px-4 py-3 font-medium">{userName}</td>
-                          <td className="px-4 py-3 text-muted">{userNumber}</td>
-                          <td className="px-4 py-3 text-muted">{formatWhen(admin.appointedAt)}</td>
-                          <td className="px-4 py-3">
-                            <div className="flex justify-end gap-2">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedAdmin(admin);
-                                  setActionError(null);
-                                  setModalMode("dismiss");
-                                }}
-                                title="Dismiss admin"
-                                className="p-1.5 text-muted hover:text-danger transition"
-                              >
-                                <TrashIcon className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </td>
+                          <td className="px-4 py-3 text-muted tabular-nums">{(adminPage - 1) * pageSize + idx + 1}</td>
+                          {adminCols.name && <td className="px-4 py-3 font-medium">{userName}</td>}
+                          {adminCols.phone && <td className="px-4 py-3 text-muted">{userNumber}</td>}
+                          {adminCols.appointedAt && <td className="px-4 py-3 text-muted">{formatWhen(admin.appointedAt)}</td>}
+                          {adminCols.actions && (
+                            <td className="px-4 py-3">
+                              <div className="flex justify-end gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedAdmin(admin);
+                                    setActionError(null);
+                                    setModalMode("dismiss");
+                                  }}
+                                  title="Dismiss admin"
+                                  className="p-1.5 text-muted hover:text-danger transition"
+                                >
+                                  <TrashIcon className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </td>
+                          )}
                         </tr>
                         );
                       })}
@@ -995,6 +1343,20 @@ export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
                 </tbody>
               </table>
             </div>
+
+            {/* Admin Pagination */}
+            {!loading && paginatedAdmins.length > 0 && (
+              <div className="border-t border-border bg-surface px-4 py-3 flex items-center justify-between">
+                <div className="text-sm text-muted">
+                  Showing <span className="font-medium">{(adminPage - 1) * pageSize + 1}</span> to <span className="font-medium">{Math.min(adminPage * pageSize, visibleAdmins.length)}</span> of <span className="font-medium">{visibleAdmins.length}</span> results
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => setAdminPage(p => Math.max(1, p - 1))} disabled={adminPage === 1} className="px-3 py-1 rounded-md border border-border bg-surface text-sm hover:bg-surface-muted transition disabled:opacity-50">Previous</button>
+                  <div className="px-3 py-1 text-sm font-medium">Page {adminPage} of {adminTotalPages}</div>
+                  <button onClick={() => setAdminPage(p => Math.min(adminTotalPages, p + 1))} disabled={adminPage === adminTotalPages} className="px-3 py-1 rounded-md border border-border bg-surface text-sm hover:bg-surface-muted transition disabled:opacity-50">Next</button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Appoint Admin Modal */}
@@ -1060,27 +1422,91 @@ export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
             </div>
           )}
 
+          {/* Search / Filter / Download / Columns toolbar */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex gap-4 flex-wrap flex-1">
+              <input
+                type="text"
+                placeholder="Search by name, phone, or shop..."
+                value={ownerSearch}
+                onChange={e => setOwnerSearch(e.target.value)}
+                className="border border-border rounded-lg px-4 py-2 bg-surface text-sm w-full md:w-72 shadow-sm"
+              />
+              <select
+                value={ownerShopFilter}
+                onChange={e => setOwnerShopFilter(e.target.value)}
+                className="border border-border rounded-lg px-3 py-2 bg-surface text-sm shadow-sm"
+              >
+                <option value="all">All Shops</option>
+                {shops.map(shop => (
+                  <option key={shop._id} value={shop._id}>{shop.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex gap-3 items-center">
+              <div className="relative">
+                <button
+                  onClick={() => setOwnersDownloadOpen(!ownersDownloadOpen)}
+                  className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-muted transition shadow-sm flex items-center gap-2"
+                >
+                  Download
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                </button>
+                {ownersDownloadOpen && (
+                  <div className="absolute right-0 mt-2 w-32 bg-surface border border-border rounded-lg shadow-lg z-20 overflow-hidden">
+                    <button onClick={() => { downloadOwnersPDF(); setOwnersDownloadOpen(false); }} className="block w-full text-left px-4 py-2 text-sm hover:bg-surface-muted transition">PDF</button>
+                    <button onClick={() => { downloadOwnersCSV(); setOwnersDownloadOpen(false); }} className="block w-full text-left px-4 py-2 text-sm hover:bg-surface-muted transition border-t border-border">CSV</button>
+                  </div>
+                )}
+              </div>
+              <div className="relative">
+                <button
+                  onClick={() => setOwnerColsMenuOpen(!ownerColsMenuOpen)}
+                  className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-muted transition shadow-sm flex items-center gap-2"
+                >
+                  Columns
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                </button>
+                {ownerColsMenuOpen && (
+                  <div className="absolute right-0 mt-2 w-48 bg-surface border border-border rounded-lg shadow-lg z-20 p-2">
+                    {Object.entries(ownerCols).map(([key, isVisible]) => (
+                      <label key={key} className="flex items-center gap-2 p-2 hover:bg-surface-muted rounded cursor-pointer text-sm capitalize">
+                        <input
+                          type="checkbox"
+                          checked={isVisible}
+                          onChange={() => setOwnerCols(prev => ({ ...prev, [key]: !prev[key as keyof typeof ownerCols] }))}
+                          className="rounded"
+                        />
+                        {key.replace(/([A-Z])/g, ' $1').trim()}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
           <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm whitespace-nowrap">
                 <thead className="bg-surface-muted/50 text-muted">
                   <tr>
                     <th className="px-4 py-3 font-medium w-12">#</th>
-                    <th className="px-4 py-3 font-medium">Name</th>
-                    <th className="px-4 py-3 font-medium">Phone</th>
-                    <th className="px-4 py-3 font-medium">Shop</th>
-                    <th className="px-4 py-3 font-medium">Appointed By</th>
-                    <th className="px-4 py-3 font-medium">Appointed At</th>
-                    <th className="px-4 py-3 font-medium text-right">Actions</th>
+                    {ownerCols.name && <th className="px-4 py-3 font-medium">Name</th>}
+                    {ownerCols.phone && <th className="px-4 py-3 font-medium">Phone</th>}
+                    {ownerCols.shop && <th className="px-4 py-3 font-medium">Shop</th>}
+                    {ownerCols.appointedBy && <th className="px-4 py-3 font-medium">Appointed By</th>}
+                    {ownerCols.appointedAt && <th className="px-4 py-3 font-medium">Appointed At</th>}
+                    {ownerCols.actions && <th className="px-4 py-3 font-medium text-right">Actions</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
                     <tr><td colSpan={7} className="px-4 py-8 text-center text-muted">Loading owners…</td></tr>
-                  ) : owners.length === 0 ? (
-                    <tr><td colSpan={7} className="px-4 py-8 text-center text-muted">No owners yet.</td></tr>
+                  ) : paginatedOwners.length === 0 ? (
+                    <tr><td colSpan={7} className="px-4 py-8 text-center text-muted">{ownerSearch || ownerShopFilter !== "all" ? "No owners match your search." : "No owners yet."}</td></tr>
                   ) : (
-                    owners.map((owner, idx) => {
+                    paginatedOwners.map((owner, idx) => {
                       const ownerUserId = typeof owner.user === "string" ? owner.user : (owner.user as any)?._id;
                       let ownerUser = typeof owner.user === "string" ? null : owner.user;
                       if (!ownerUser?.name) {
@@ -1092,33 +1518,37 @@ export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
                       const appointedBy = typeof owner.appointedBy === "string" ? null : owner.appointedBy;
                       return (
                         <tr key={owner._id || idx} className="border-b border-border last:border-0 hover:bg-surface-muted/30 transition-colors">
-                          <td className="px-4 py-3 text-muted tabular-nums">{idx + 1}</td>
-                          <td className="px-4 py-3 font-medium">{ownerUser?.name || "—"}</td>
-                          <td className="px-4 py-3 text-muted">{ownerUser?.number || "—"}</td>
-                          <td className="px-4 py-3">{ownerShop?.name || "—"}</td>
-                          <td className="px-4 py-3 text-muted">
-                            {appointedBy?.name || "—"}
-                            {owner.appointedByAdmin && (
-                              <span className="ml-2 bg-accent-soft text-accent px-2 py-0.5 rounded text-xs font-medium">Admin</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-muted">{formatWhen(owner.appointedAt)}</td>
-                          <td className="px-4 py-3">
-                            <div className="flex justify-end gap-2">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedOwner(owner);
-                                  setActionError(null);
-                                  setModalMode("removeOwner");
-                                }}
-                                title="Remove owner"
-                                className="p-1.5 text-muted hover:text-danger transition"
-                              >
-                                <TrashIcon className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </td>
+                          <td className="px-4 py-3 text-muted tabular-nums">{(ownerPage - 1) * pageSize + idx + 1}</td>
+                          {ownerCols.name && <td className="px-4 py-3 font-medium">{ownerUser?.name || "—"}</td>}
+                          {ownerCols.phone && <td className="px-4 py-3 text-muted">{ownerUser?.number || "—"}</td>}
+                          {ownerCols.shop && <td className="px-4 py-3">{ownerShop?.name || "—"}</td>}
+                          {ownerCols.appointedBy && (
+                            <td className="px-4 py-3 text-muted">
+                              {appointedBy?.name || "—"}
+                              {owner.appointedByAdmin && (
+                                <span className="ml-2 bg-accent-soft text-accent px-2 py-0.5 rounded text-xs font-medium">Admin</span>
+                              )}
+                            </td>
+                          )}
+                          {ownerCols.appointedAt && <td className="px-4 py-3 text-muted">{formatWhen(owner.appointedAt)}</td>}
+                          {ownerCols.actions && (
+                            <td className="px-4 py-3">
+                              <div className="flex justify-end gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedOwner(owner);
+                                    setActionError(null);
+                                    setModalMode("removeOwner");
+                                  }}
+                                  title="Remove owner"
+                                  className="p-1.5 text-muted hover:text-danger transition"
+                                >
+                                  <TrashIcon className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </td>
+                          )}
                         </tr>
                       );
                     })
@@ -1126,6 +1556,20 @@ export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
                 </tbody>
               </table>
             </div>
+
+            {/* Owner Pagination */}
+            {!loading && paginatedOwners.length > 0 && (
+              <div className="border-t border-border bg-surface px-4 py-3 flex items-center justify-between">
+                <div className="text-sm text-muted">
+                  Showing <span className="font-medium">{(ownerPage - 1) * pageSize + 1}</span> to <span className="font-medium">{Math.min(ownerPage * pageSize, visibleOwners.length)}</span> of <span className="font-medium">{visibleOwners.length}</span> results
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => setOwnerPage(p => Math.max(1, p - 1))} disabled={ownerPage === 1} className="px-3 py-1 rounded-md border border-border bg-surface text-sm hover:bg-surface-muted transition disabled:opacity-50">Previous</button>
+                  <div className="px-3 py-1 text-sm font-medium">Page {ownerPage} of {ownerTotalPages}</div>
+                  <button onClick={() => setOwnerPage(p => Math.min(ownerTotalPages, p + 1))} disabled={ownerPage === ownerTotalPages} className="px-3 py-1 rounded-md border border-border bg-surface text-sm hover:bg-surface-muted transition disabled:opacity-50">Next</button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Appoint Owner Modal */}

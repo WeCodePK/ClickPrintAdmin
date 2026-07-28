@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import type { ListDraftsResponse, Draft, DraftStatsData } from "@/lib/types";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import { StatCard } from "@/components/ui/stat-card";
 import { DocumentIcon, EyeIcon, TrashIcon, RefreshIcon } from "@/components/icons";
 import { Modal } from "@/components/ui/modal";
@@ -82,6 +84,7 @@ export function DraftsPanel() {
     actions: true
   });
   const [colsMenuOpen, setColsMenuOpen] = useState(false);
+  const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
 
   const loadStats = useCallback(async () => {
     if (!token) return;
@@ -159,6 +162,63 @@ export function DraftsPanel() {
   const totalPages = Math.ceil(visible.length / pageSize) || 1;
   const paginatedData = visible.slice((page - 1) * pageSize, page * pageSize);
 
+  const downloadPDF = () => {
+    const doc = new jsPDF();
+    doc.text("Drafts Report", 14, 15);
+
+    const headers = ["#"];
+    if (cols.status) headers.push("Status");
+    if (cols.createdBy) headers.push("Created By");
+    if (cols.shop) headers.push("Shop");
+    if (cols.files) headers.push("Files");
+
+    const tableData = visible.map((draft, index) => {
+      const row = [String(index + 1)];
+      if (cols.status) row.push(normalizeStatus(draft.status));
+      if (cols.createdBy) row.push(createdByLabel(draft));
+      if (cols.shop) row.push(typeof draft.shop === "object" && draft.shop?.name ? draft.shop.name : "—");
+      if (cols.files) row.push(String(draft.files?.length || 0));
+      return row;
+    });
+
+    autoTable(doc, {
+      head: [headers],
+      body: tableData,
+      startY: 20,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [0, 217, 163] }, // accent color
+    });
+
+    doc.save("drafts-report.pdf");
+  };
+
+  const downloadCSV = () => {
+    const headers = ["#"];
+    if (cols.status) headers.push("Status");
+    if (cols.createdBy) headers.push("Created By");
+    if (cols.shop) headers.push("Shop");
+    if (cols.files) headers.push("Files");
+
+    const rows = visible.map((draft, index) => {
+      const row = [String(index + 1)];
+      if (cols.status) row.push(`"${normalizeStatus(draft.status)}"`);
+      if (cols.createdBy) row.push(`"${createdByLabel(draft)}"`);
+      if (cols.shop) row.push(`"${typeof draft.shop === "object" && draft.shop?.name ? draft.shop.name : "—"}"`);
+      if (cols.files) row.push(`"${draft.files?.length || 0}"`);
+      return row.join(",");
+    });
+
+    const csvContent = [headers.join(","), ...rows].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", "drafts-report.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const handleDeleteSubmit = async () => {
     if (!selectedDraft || !token) return;
     setBusyId("delete");
@@ -226,15 +286,33 @@ export function DraftsPanel() {
           </select>
         </div>
 
-        {/* Columns Dropdown */}
-        <div className="relative">
-          <button
-            onClick={() => setColsMenuOpen(!colsMenuOpen)}
-            className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-muted transition shadow-sm flex items-center gap-2"
-          >
-            Columns
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-          </button>
+        <div className="flex gap-3 items-center">
+          {/* Download Dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setDownloadMenuOpen(!downloadMenuOpen)}
+              className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-muted transition shadow-sm flex items-center gap-2"
+            >
+              Download
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            {downloadMenuOpen && (
+              <div className="absolute right-0 mt-2 w-32 bg-surface border border-border rounded-lg shadow-lg z-20 overflow-hidden">
+                <button onClick={() => { downloadPDF(); setDownloadMenuOpen(false); }} className="block w-full text-left px-4 py-2 text-sm hover:bg-surface-muted transition">PDF</button>
+                <button onClick={() => { downloadCSV(); setDownloadMenuOpen(false); }} className="block w-full text-left px-4 py-2 text-sm hover:bg-surface-muted transition border-t border-border">CSV</button>
+              </div>
+            )}
+          </div>
+
+          {/* Columns Dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setColsMenuOpen(!colsMenuOpen)}
+              className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-muted transition shadow-sm flex items-center gap-2"
+            >
+              Columns
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
           {colsMenuOpen && (
           <div className="absolute right-0 mt-2 w-48 bg-surface border border-border rounded-lg shadow-lg z-20 p-2">
             {Object.entries(cols).map(([key, isVisible]) => (
@@ -249,7 +327,8 @@ export function DraftsPanel() {
               </label>
             ))}
           </div>
-        )}
+          )}
+        </div>
         </div>
       </div>
 

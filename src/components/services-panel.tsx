@@ -167,6 +167,7 @@ export function ServicesPanel() {
     actions: true,
   });
   const [colsMenuOpen, setColsMenuOpen] = useState(false);
+  const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -298,6 +299,41 @@ export function ServicesPanel() {
     });
 
     doc.save("services-report.pdf");
+  };
+
+  const downloadCSV = () => {
+    const headers = ["#"];
+    if (cols.name) headers.push("Service");
+    if (cols.shop) headers.push("Shop");
+    if (cols.rate) headers.push("Rate");
+    if (cols.pageType) headers.push("Page Type");
+    if (cols.color) headers.push("Color");
+    if (cols.sides) headers.push("Sides");
+    if (cols.printers) headers.push("Printers");
+    if (cols.status) headers.push("Status");
+
+    const rows = filtered.map((service, index) => {
+      const row = [String(index + 1)];
+      if (cols.name) row.push(`"${serviceLabel(service)}"`);
+      if (cols.shop) row.push(`"${shopNameOf(service, shops)}"`);
+      if (cols.rate) row.push(`"${formatRate(service.rate)}"`);
+      if (cols.pageType) row.push(`"${service.keys?.pageType || "—"}"`);
+      if (cols.color) row.push(`"${service.keys?.color ? "Color" : "B&W"}"`);
+      if (cols.sides) row.push(`"${service.keys?.sidedness ? "Double" : "Single"}"`);
+      if (cols.printers) row.push(`"${service.printers?.length ?? 0}"`);
+      if (cols.status) row.push(`"${service.isDisabled ? "Disabled" : "Enabled"}"`);
+      return row.join(",");
+    });
+
+    const csvContent = [headers.join(","), ...rows].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", "services-report.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const openModal = (service: Service, mode: "view" | "edit" | "toggle" | "delete") => {
@@ -660,7 +696,22 @@ export function ServicesPanel() {
         </div>
 
         <div className="flex gap-3 items-center">
-          <button onClick={downloadPDF} className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-muted transition shadow-sm">Download PDF</button>
+          {/* Download Dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setDownloadMenuOpen(!downloadMenuOpen)}
+              className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-muted transition shadow-sm flex items-center gap-2"
+            >
+              Download
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            {downloadMenuOpen && (
+              <div className="absolute right-0 mt-2 w-32 bg-surface border border-border rounded-lg shadow-lg z-20 overflow-hidden">
+                <button onClick={() => { downloadPDF(); setDownloadMenuOpen(false); }} className="block w-full text-left px-4 py-2 text-sm hover:bg-surface-muted transition">PDF</button>
+                <button onClick={() => { downloadCSV(); setDownloadMenuOpen(false); }} className="block w-full text-left px-4 py-2 text-sm hover:bg-surface-muted transition border-t border-border">CSV</button>
+              </div>
+            )}
+          </div>
 
           {/* Columns Dropdown */}
           <div className="relative">
