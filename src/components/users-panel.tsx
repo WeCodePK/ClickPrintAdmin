@@ -28,7 +28,7 @@ interface UserStats {
 export type UsersTab = "users" | "admins" | "owners";
 
 export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
-  const { token } = useAuth();
+  const { token, logout, user: currentUser } = useAuth();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [admins, setAdmins] = useState<Admin[]>([]);
   const [owners, setOwners] = useState<Owner[]>([]);
@@ -121,6 +121,10 @@ export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
       });
 
       if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          logout();
+          return;
+        }
         throw new Error(`HTTP ${response.status}`);
       }
 
@@ -162,6 +166,10 @@ export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
       });
 
       if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          logout();
+          return;
+        }
         throw new Error(`HTTP ${response.status}`);
       }
 
@@ -193,6 +201,10 @@ export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
       });
 
       if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          logout();
+          return;
+        }
         throw new Error(`HTTP ${response.status}`);
       }
 
@@ -221,6 +233,10 @@ export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
       });
 
       if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          logout();
+          return;
+        }
         throw new Error(`HTTP ${response.status}`);
       }
 
@@ -246,6 +262,10 @@ export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
       });
 
       if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          logout();
+          return;
+        }
         throw new Error(`HTTP ${response.status}`);
       }
 
@@ -594,6 +614,10 @@ export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
       });
 
       if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          logout();
+          return;
+        }
         throw new Error(`HTTP ${response.status}`);
       }
 
@@ -630,6 +654,10 @@ export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
       });
 
       if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          logout();
+          return;
+        }
         throw new Error(`HTTP ${response.status}`);
       }
 
@@ -775,6 +803,10 @@ export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
       } else {
         setModalMode(null);
         setSelectedAdmin(null);
+        if (currentUser && adminId === currentUser._id) {
+          logout();
+          return;
+        }
         void loadAdmins();
         void loadStats();
       }
