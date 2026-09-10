@@ -377,7 +377,7 @@ export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
   const ownerTotalPages = Math.ceil(visibleOwners.length / pageSize) || 1;
   const paginatedOwners = visibleOwners.slice((ownerPage - 1) * pageSize, ownerPage * pageSize);
 
-  const openModal = (user: AdminUser, mode: "edit" | "toggle" | "delete") => {
+  const openModal = (user: AdminUser, mode: "edit" | "toggle" ) => {
     setSelectedUser(user);
     setModalMode(mode);
     setEditName(user.name || "");
@@ -716,34 +716,6 @@ export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
     } catch (err) {
       console.error("Error toggling user status:", err);
       setActionError(`Error: ${err instanceof Error ? err.message : "Unknown error updating user status"}`);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleDeleteUser = async () => {
-    if (!selectedUser || !token) return;
-    setBusy(true);
-    setActionError(null);
-
-    try {
-      const response = await fetch(`/api/users/${selectedUser._id}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      const data = await response.json();
-
-      if (!response.ok || data.success === false) {
-        setActionError(data.error || data.message || "Failed to delete user");
-      } else {
-        closeModal();
-        void load();
-        void loadStats();
-        void loadAdmins();
-      }
-    } catch {
-      setActionError("Network error calling DELETE /api/users/:id");
     } finally {
       setBusy(false);
     }
@@ -1095,14 +1067,6 @@ export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
                           >
                             <PowerIcon className="w-4 h-4" />
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => openModal(user, "delete")}
-                            title="Delete user"
-                            className="p-1.5 text-muted hover:text-danger transition"
-                          >
-                            <TrashIcon className="w-4 h-4" />
-                          </button>
                         </div>
                       </td>
                     )}
@@ -1205,18 +1169,6 @@ export function UsersPanel({ tab = "users" }: { tab?: UsersTab }) {
         )}
       </Modal>
 
-      <Modal isOpen={modalMode === "delete"} onClose={closeModal} title="Delete User">
-        {selectedUser && (
-          <div className="space-y-4">
-            {actionError && <div className="bg-danger-soft text-danger p-3 rounded-lg text-sm">{actionError}</div>}
-            <p className="text-sm">Are you sure you want to delete <strong>{selectedUser.name || selectedUser.number}</strong>? This cannot be undone.</p>
-            <div className="flex justify-end gap-2 mt-6">
-              <button type="button" onClick={closeModal} className="px-4 py-2 border border-border rounded-lg text-sm hover:bg-surface-muted transition">Cancel</button>
-              <button type="button" onClick={handleDeleteUser} disabled={busy} className="px-4 py-2 bg-danger text-white rounded-lg text-sm font-medium hover:bg-danger/90 transition disabled:opacity-50">Confirm Delete</button>
-            </div>
-          </div>
-        )}
-      </Modal>
 
       <Modal isOpen={showCreateModal} onClose={closeCreateModal} title="Create User">
         <form onSubmit={handleCreateUser} className="space-y-4">
