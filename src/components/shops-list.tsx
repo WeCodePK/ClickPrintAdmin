@@ -316,7 +316,7 @@ export function ShopsList() {
       <div className="flex justify-end items-center gap-2 -mt-16 sm:-mt-20 relative z-10 mb-4">
         <Link
           href="/shops/create"
-          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium !text-white hover:bg-accent-hover transition shadow-sm flex items-center gap-2"
+          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white! hover:bg-accent-hover transition shadow-sm flex items-center gap-2"
         >
           <PlusIcon className="w-4 h-4" />
           Create Shop
@@ -444,7 +444,7 @@ export function ShopsList() {
                       {cols.name && (
                         <td className="px-4 py-3 font-medium">{shop.name}</td>
                       )}
-                      {cols.address && <td className="px-4 py-3 text-muted max-w-[200px]" title={shop.address}>{addressDisplay}</td>}
+                      {cols.address && <td className="px-4 py-3 text-muted max-w-50" title={shop.address}>{addressDisplay}</td>}
                       {cols.contact && <td className="px-4 py-3 text-muted">{shop.contactNumber || "—"}</td>}
                       {cols.maps && (
                         <td className="px-4 py-3">

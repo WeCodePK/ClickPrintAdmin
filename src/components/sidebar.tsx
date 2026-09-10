@@ -80,7 +80,7 @@ function SidebarNav() {
         <div className={`border-b border-white/10 flex items-center ${collapsed ? "justify-center py-6 px-2" : "px-6 py-6 justify-between"}`}>
           {!collapsed && (
             <div>
-              <p className="font-[family-name:var(--font-display)] text-2xl tracking-tight text-white">
+              <p className="font-display text-2xl tracking-tight text-white">
                 ClickPrint
               </p>
               <p className="mt-1 text-sm text-sidebar-muted">Admin console</p>
