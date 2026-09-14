@@ -207,12 +207,24 @@ export function ShopForm({
 
     const nextErrors: FieldErrors = {};
 
-    if (!form.name.trim()) nextErrors.name = "Name is required";
+    const nameVal = form.name.trim();
+    if (!nameVal) {
+      nextErrors.name = "Name is required";
+    } else if (nameVal.length < 2) {
+      nextErrors.name = "Name must be at least 2 characters";
+    } else if (!/^[a-zA-Z]/.test(nameVal)) {
+      nextErrors.name = "Name must start with an alphabet";
+    }
+
     if (!form.address.trim()) nextErrors.address = "Address is required";
     if (!coordinates) nextErrors.coordinates = "Pick a location on the map";
     if (!imageFileId) nextErrors.imageFile = "A shop image is required";
-    if (!form.contactNumber.trim()) {
+    
+    const contactVal = form.contactNumber.trim();
+    if (!contactVal) {
       nextErrors.contactNumber = "Contact number is required";
+    } else if (!/^03\d{9}$/.test(contactVal)) {
+      nextErrors.contactNumber = "Must be a valid 11-digit Pakistani number (e.g., 03XXXXXXXXX)";
     }
     if (timings.some((day) => !day.closed && (!day.open || !day.close))) {
       nextErrors.timings = "Every open day needs an opening and closing time";

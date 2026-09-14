@@ -44,6 +44,20 @@ function formatMoney(val: number) {
   return new Intl.NumberFormat("en-PK", { style: "currency", currency: "PKR", minimumFractionDigits: 0 }).format(val);
 }
 
+function formatCost(cost: any) {
+  if (cost === null || cost === undefined) return "—";
+  if (typeof cost === "number") return formatMoney(cost);
+  if (typeof cost === "object" && typeof cost.total === "number") return formatMoney(cost.total);
+  return "—";
+}
+
+function createdByLabel(item: Job) {
+  const by = item.createdBy;
+  if (!by) return "—";
+  if (typeof by === "string") return by;
+  return by.name || by.number || by._id;
+}
+
 function formatDate(iso?: string) {
   if (!iso) return "—";
   return new Intl.DateTimeFormat("en-PK", { dateStyle: "short", timeStyle: "short" }).format(new Date(iso));
@@ -325,29 +339,41 @@ export default function OverviewPage() {
           <div className="bg-surface rounded-xl border border-border overflow-hidden shadow-sm mt-4">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm whitespace-nowrap">
-                <thead className="bg-surface-muted/50 text-muted">
+                <thead className="bg-surface-muted/50 text-muted text-xs uppercase tracking-wide">
                   <tr>
                     <th className="px-4 py-3 font-medium w-12">#</th>
-                    <th className="px-4 py-3 font-medium">Date</th>
                     <th className="px-4 py-3 font-medium">Status</th>
+                    <th className="px-4 py-3 font-medium">Created By</th>
+                    <th className="px-4 py-3 font-medium">Shop</th>
+                    <th className="px-4 py-3 font-medium">Files</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {previewDrafts.map((d, index) => (
-                    <tr key={d._id} className="border-b border-border last:border-0 hover:bg-surface-muted/30">
-                      <td className="px-4 py-3 text-muted tabular-nums">{index + 1}</td>
-                      <td className="px-4 py-3 text-muted">{formatDate(d.createdAt)}</td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex rounded px-2 py-0.5 text-xs font-medium capitalize ${
-                           d.status === "ready" ? "bg-print-request-soft text-print-request" : 
-                           d.status === "incomplete" ? "bg-warning-soft text-warning" : 
-                           "bg-surface-muted text-muted"
-                        }`}>
-                          {d.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {previewDrafts.map((d, index) => {
+                    const phone = typeof d.createdBy === "object" && d.createdBy?.number ? d.createdBy.number : null;
+                    const shopName = typeof d.shop === "object" && d.shop?.name ? d.shop.name : "—";
+                    return (
+                      <tr key={d._id} className="border-b border-border last:border-0 hover:bg-surface-muted/30">
+                        <td className="px-4 py-3 text-muted tabular-nums">{index + 1}</td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex rounded-md px-2 py-1 text-xs font-medium capitalize ${
+                             d.status === "ready" ? "bg-print-request-soft text-print-request" :
+                             d.status === "incomplete" ? "bg-warning-soft text-warning" :
+                             d.status === "complete" ? "bg-accent-soft text-accent" :
+                             "bg-surface-muted text-muted"
+                          }`}>
+                            {d.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="font-medium">{typeof d.createdBy === "object" && d.createdBy ? (d.createdBy.name || d.createdBy.number || d.createdBy._id) : (d.createdBy || "—")}</div>
+                          {phone ? <div className="mt-0.5 text-xs text-muted">{phone}</div> : null}
+                        </td>
+                        <td className="px-4 py-3 text-muted">{shopName}</td>
+                        <td className="px-4 py-3 text-muted tabular-nums">{d.files?.length ?? 0}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -374,32 +400,40 @@ export default function OverviewPage() {
           <div className="bg-surface rounded-xl border border-border overflow-hidden shadow-sm mt-4">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm whitespace-nowrap">
-                <thead className="bg-surface-muted/50 text-muted">
+                <thead className="bg-surface-muted/50 text-muted text-xs uppercase tracking-wide">
                   <tr>
                     <th className="px-4 py-3 font-medium w-12">#</th>
-                    <th className="px-4 py-3 font-medium">Date</th>
-                    <th className="px-4 py-3 font-medium">Cost</th>
                     <th className="px-4 py-3 font-medium">Status</th>
+                    <th className="px-4 py-3 font-medium">Created By</th>
+                    <th className="px-4 py-3 font-medium">Cost</th>
+                    <th className="px-4 py-3 font-medium">Created At</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {previewJobs.map((j, index) => (
-                    <tr key={j._id} className="border-b border-border last:border-0 hover:bg-surface-muted/30">
-                      <td className="px-4 py-3 text-muted tabular-nums">{index + 1}</td>
-                      <td className="px-4 py-3 text-muted">{formatDate(j.createdAt)}</td>
-                      <td className="px-4 py-3 font-medium">{j.cost ? formatMoney(j.cost) : "—"}</td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex rounded px-2 py-0.5 text-xs font-medium capitalize ${
-                           j.status === "completed" ? "bg-print-request-soft text-print-request" : 
-                           j.status === "cancelled" || j.status === "failed" ? "bg-danger-soft text-danger" :
-                           j.status === "printing" ? "bg-accent-soft text-accent" : 
-                           "bg-warning-soft text-warning"
-                        }`}>
-                          {j.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {previewJobs.map((j, index) => {
+                    const phone = typeof j.createdBy === "object" && j.createdBy?.number ? j.createdBy.number : null;
+                    return (
+                      <tr key={j._id} className="border-b border-border last:border-0 hover:bg-surface-muted/30">
+                        <td className="px-4 py-3 text-muted tabular-nums">{index + 1}</td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex rounded-md px-2 py-1 text-xs font-medium capitalize ${
+                             j.status === "completed" ? "bg-print-request-soft text-print-request" :
+                             j.status === "cancelled" || j.status === "failed" ? "bg-danger-soft text-danger" :
+                             j.status === "printing" ? "bg-accent-soft text-accent" :
+                             "bg-warning-soft text-warning"
+                          }`}>
+                            {j.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="font-medium">{createdByLabel(j)}</div>
+                          {phone ? <div className="mt-0.5 text-xs text-muted">{phone}</div> : null}
+                        </td>
+                        <td className="px-4 py-3 text-muted">{formatCost(j.cost)}</td>
+                        <td className="px-4 py-3 text-muted">{formatDate(j.createdAt)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

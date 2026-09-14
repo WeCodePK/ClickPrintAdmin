@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import type { ListJobsResponse, Job, JobStatsData, ListHistoryResponse, HistoryEntry, HistoryStatsData } from "@/lib/types";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import { StatCard } from "@/components/ui/stat-card";
 import { EyeIcon, TrashIcon, RefreshIcon, CheckIcon } from "@/components/icons";
 import { Modal } from "@/components/ui/modal";
@@ -114,6 +116,7 @@ export function JobsPanel() {
     actions: true
   });
   const [colsMenuOpen, setColsMenuOpen] = useState(false);
+  const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
 
   const loadJobStats = useCallback(async () => {
     if (!token) return;
@@ -182,6 +185,7 @@ export function JobsPanel() {
         setJobs([]);
         return;
       }
+      console.log("extracted jobs", extractJobs(data))
       setJobs(extractJobs(data));
     } catch {
       setError("Network error while loading jobs");
@@ -247,6 +251,63 @@ export function JobsPanel() {
   const totalPages = Math.ceil(visible.length / pageSize) || 1;
   const paginatedData = visible.slice((page - 1) * pageSize, page * pageSize);
 
+  const downloadPDF = () => {
+    const doc = new jsPDF();
+    doc.text(`${tab === "jobs" ? "Jobs" : "History"} Report`, 14, 15);
+
+    const headers = ["#"];
+    if (cols.status) headers.push("Status");
+    if (cols.createdBy) headers.push("Created By");
+    if (cols.cost) headers.push("Cost");
+    if (cols.createdAt) headers.push("Created At");
+
+    const tableData = visible.map((item, index) => {
+      const row = [String(index + 1)];
+      if (cols.status) row.push(normalizeStatus(item.status));
+      if (cols.createdBy) row.push(createdByLabel(item));
+      if (cols.cost) row.push(String(formatCost((item as any).cost)));
+      if (cols.createdAt) row.push(formatWhen(item.createdAt));
+      return row;
+    });
+
+    autoTable(doc, {
+      head: [headers],
+      body: tableData,
+      startY: 20,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [0, 217, 163] }, // accent color
+    });
+
+    doc.save(`${tab === "jobs" ? "jobs" : "history"}-report.pdf`);
+  };
+
+  const downloadCSV = () => {
+    const headers = ["#"];
+    if (cols.status) headers.push("Status");
+    if (cols.createdBy) headers.push("Created By");
+    if (cols.cost) headers.push("Cost");
+    if (cols.createdAt) headers.push("Created At");
+
+    const rows = visible.map((item, index) => {
+      const row = [String(index + 1)];
+      if (cols.status) row.push(`"${normalizeStatus(item.status)}"`);
+      if (cols.createdBy) row.push(`"${createdByLabel(item)}"`);
+      if (cols.cost) row.push(`"${formatCost((item as any).cost)}"`);
+      if (cols.createdAt) row.push(`"${formatWhen(item.createdAt)}"`);
+      return row.join(",");
+    });
+
+    const csvContent = [headers.join(","), ...rows].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `${tab === "jobs" ? "jobs" : "history"}-report.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const handleCancelSubmit = async () => {
     if (!selectedJob || !token || tab !== "jobs") return;
     setBusyId("cancel");
@@ -275,6 +336,13 @@ export function JobsPanel() {
   const canCancel = (status: string) => {
     const s = normalizeStatus(status);
     return s === "submitted" || s === "queued";
+  };
+
+  const formatCost = (cost: any) => {
+    if (cost === null || cost === undefined) return "—";
+    if (typeof cost === "number") return cost;
+    if (typeof cost === "object" && typeof cost.total === "number") return cost.total;
+    return "—";
   };
 
   return (
@@ -353,7 +421,6 @@ export function JobsPanel() {
                 <option value="submitted">Submitted</option>
                 <option value="queued">Queued</option>
                 <option value="printing">Printing</option>
-                <option value="cancelled">Cancelled</option>
               </>
             ) : (
               <>
@@ -365,15 +432,33 @@ export function JobsPanel() {
           </select>
         </div>
 
-        {/* Columns Dropdown */}
-        <div className="relative">
-          <button
-            onClick={() => setColsMenuOpen(!colsMenuOpen)}
-            className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-muted transition shadow-sm flex items-center gap-2"
-          >
-            Columns
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-          </button>
+        <div className="flex gap-3 items-center">
+          {/* Download Dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setDownloadMenuOpen(!downloadMenuOpen)}
+              className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-muted transition shadow-sm flex items-center gap-2"
+            >
+              Download
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            {downloadMenuOpen && (
+              <div className="absolute right-0 mt-2 w-32 bg-surface border border-border rounded-lg shadow-lg z-20 overflow-hidden">
+                <button onClick={() => { downloadPDF(); setDownloadMenuOpen(false); }} className="block w-full text-left px-4 py-2 text-sm hover:bg-surface-muted transition">PDF</button>
+                <button onClick={() => { downloadCSV(); setDownloadMenuOpen(false); }} className="block w-full text-left px-4 py-2 text-sm hover:bg-surface-muted transition border-t border-border">CSV</button>
+              </div>
+            )}
+          </div>
+
+          {/* Columns Dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setColsMenuOpen(!colsMenuOpen)}
+              className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-muted transition shadow-sm flex items-center gap-2"
+            >
+              Columns
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
           {colsMenuOpen && (
             <div className="absolute right-0 mt-2 w-48 bg-surface border border-border rounded-lg shadow-lg z-20 p-2">
               {Object.entries(cols).map(([key, isVisible]) => (
@@ -389,6 +474,7 @@ export function JobsPanel() {
               ))}
             </div>
           )}
+        </div>
         </div>
       </div>
 
@@ -409,9 +495,9 @@ export function JobsPanel() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={5} className="px-4 py-12 text-center text-muted">Loading {tab}…</td></tr>
+                <tr><td colSpan={6} className="px-4 py-12 text-center text-muted">Loading {tab}…</td></tr>
               ) : paginatedData.length === 0 ? (
-                <tr><td colSpan={5} className="px-4 py-12 text-center text-muted">No {tab} in this view.</td></tr>
+                <tr><td colSpan={6} className="px-4 py-12 text-center text-muted">No {tab} in this view.</td></tr>
               ) : (
                 paginatedData.map((item, index) => {
                   const status = normalizeStatus(item.status);
@@ -433,7 +519,7 @@ export function JobsPanel() {
                           {phone ? <div className="mt-0.5 text-xs text-muted">{phone}</div> : null}
                         </td>
                       )}
-                      {cols.cost && <td className="px-4 py-4 text-muted">{item.cost || "—"}</td>}
+                      {cols.cost && <td className="px-4 py-4 text-muted">{formatCost(item.cost)}</td>}
                       {cols.createdAt && <td className="px-4 py-4 text-muted">{formatWhen(item.createdAt)}</td>}
                       {cols.actions && (
                         <td className="px-4 py-4">
@@ -486,7 +572,7 @@ export function JobsPanel() {
             <div className="grid grid-cols-2 gap-4">
               <div><p className="text-xs text-muted mb-1">Status</p>{tab === "jobs" ? <JobStatusBadge status={normalizeStatus(selectedJob.status)} /> : <HistoryStatusBadge status={normalizeStatus(selectedJob.status)} />}</div>
               <div><p className="text-xs text-muted mb-1">Created By</p><p className="font-medium">{createdByLabel(selectedJob)}</p></div>
-              <div><p className="text-xs text-muted mb-1">Cost</p><p className="font-medium">{selectedJob.cost || "—"}</p></div>
+              <div><p className="text-xs text-muted mb-1">Cost</p><p className="font-medium">{formatCost(selectedJob.cost)}</p></div>
               <div><p className="text-xs text-muted mb-1">Created At</p><p className="font-medium">{formatWhen(selectedJob.createdAt)}</p></div>
             </div>
           </div>

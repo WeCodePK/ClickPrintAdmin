@@ -99,6 +99,7 @@ export function PrintersPanel() {
     actions: true,
   });
   const [colsMenuOpen, setColsMenuOpen] = useState(false);
+  const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -209,6 +210,33 @@ export function PrintersPanel() {
     });
 
     doc.save("printers-report.pdf");
+  };
+
+  const downloadCSV = () => {
+    const headers = ["#"];
+    if (cols.name) headers.push("Name");
+    if (cols.shop) headers.push("Shop");
+    if (cols.status) headers.push("Status");
+    if (cols.lastSeen) headers.push("Last Seen");
+
+    const rows = filtered.map((printer, index) => {
+      const row = [String(index + 1)];
+      if (cols.name) row.push(`"${printer.name}"`);
+      if (cols.shop) row.push(`"${shopNameOf(printer, shops)}"`);
+      if (cols.status) row.push(`"${printer.isDisabled ? "Disabled" : printer.isOnline ? "Online" : "Offline"}"`);
+      if (cols.lastSeen) row.push(`"${formatWhen(printer.lastSeen)}"`);
+      return row.join(",");
+    });
+
+    const csvContent = [headers.join(","), ...rows].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", "printers-report.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const openModal = (printer: Printer, mode: "view" | "edit" | "toggle" | "delete") => {
@@ -411,7 +439,22 @@ export function PrintersPanel() {
         </div>
 
         <div className="flex gap-3 items-center">
-          <button onClick={downloadPDF} className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-muted transition shadow-sm">Download PDF</button>
+          {/* Download Dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setDownloadMenuOpen(!downloadMenuOpen)}
+              className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-muted transition shadow-sm flex items-center gap-2"
+            >
+              Download
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            {downloadMenuOpen && (
+              <div className="absolute right-0 mt-2 w-32 bg-surface border border-border rounded-lg shadow-lg z-20 overflow-hidden">
+                <button onClick={() => { downloadPDF(); setDownloadMenuOpen(false); }} className="block w-full text-left px-4 py-2 text-sm hover:bg-surface-muted transition">PDF</button>
+                <button onClick={() => { downloadCSV(); setDownloadMenuOpen(false); }} className="block w-full text-left px-4 py-2 text-sm hover:bg-surface-muted transition border-t border-border">CSV</button>
+              </div>
+            )}
+          </div>
 
           {/* Columns Dropdown */}
           <div className="relative">

@@ -104,7 +104,7 @@ export interface TopUp {
   _id: string;
   status: TopUpStatus | string;
   amount: number;
-  ppfid?: TopUpFile | string | null;
+  paymentProofFile?: TopUpFile | string | null;
   createdAt: string;
   createdBy?: TopUpUser | string | null;
 }
@@ -150,11 +150,29 @@ export interface DraftUser {
   name: string;
 }
 
+export interface DraftFileData {
+  _id: string;
+  name: string;
+  numberOfPages?: number;
+}
+
+export interface DraftFile {
+  file: DraftFileData | string;
+  settings?: Record<string, unknown>;
+}
+
+export interface DraftShop {
+  _id: string;
+  name: string;
+  isOnline?: boolean;
+}
+
 export interface Draft {
   _id: string;
   status: DraftStatus | string;
-  createdAt: string;
   createdBy?: DraftUser | string | null;
+  shop?: DraftShop | string | null;
+  files?: DraftFile[];
 }
 
 export interface ListDraftsResponse {

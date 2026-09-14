@@ -46,7 +46,7 @@ export function PhoneLoginForm() {
       };
 
       if (!response.ok || data.success === false) {
-        setError(data.error || data.message || "Failed to send OTP");
+        setError(data.error || data.message || "You are not an admin");
         return;
       }
 

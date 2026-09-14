@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import type { ListDraftsResponse, Draft, DraftStatsData } from "@/lib/types";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import { StatCard } from "@/components/ui/stat-card";
 import { DocumentIcon, EyeIcon, TrashIcon, RefreshIcon } from "@/components/icons";
 import { Modal } from "@/components/ui/modal";
@@ -12,13 +14,7 @@ function normalizeStatus(value: unknown): string {
   return value.toLowerCase();
 }
 
-function formatWhen(iso?: string) {
-  if (!iso) return "—";
-  return new Intl.DateTimeFormat("en-PK", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(iso));
-}
+
 
 function StatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
@@ -83,10 +79,12 @@ export function DraftsPanel() {
   const [cols, setCols] = useState({
     status: true,
     createdBy: true,
-    createdAt: true,
+    shop: true,
+    files: true,
     actions: true
   });
   const [colsMenuOpen, setColsMenuOpen] = useState(false);
+  const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
 
   const loadStats = useCallback(async () => {
     if (!token) return;
@@ -98,7 +96,7 @@ export function DraftsPanel() {
       });
       const data = await response.json();
 
-      console.log("backend draft stats", data.data)
+      console.log("backend draft stats", data.data.stats)
       if (!response.ok || data.success === false) {
         console.error("Failed to load draft stats");
         return;
@@ -125,6 +123,7 @@ export function DraftsPanel() {
         cache: "no-store",
       });
       const data = await response.json();
+      
 
       if (!response.ok || data.success === false) {
         setError(data.error || data.message || "Failed to load drafts");
@@ -155,7 +154,6 @@ export function DraftsPanel() {
       return matchStatus && matchQuery;
     });
   }, [drafts, view, query]);
-
   // Reset page when filters change
   useEffect(() => {
     setPage(1);
@@ -163,6 +161,63 @@ export function DraftsPanel() {
 
   const totalPages = Math.ceil(visible.length / pageSize) || 1;
   const paginatedData = visible.slice((page - 1) * pageSize, page * pageSize);
+
+  const downloadPDF = () => {
+    const doc = new jsPDF();
+    doc.text("Drafts Report", 14, 15);
+
+    const headers = ["#"];
+    if (cols.status) headers.push("Status");
+    if (cols.createdBy) headers.push("Created By");
+    if (cols.shop) headers.push("Shop");
+    if (cols.files) headers.push("Files");
+
+    const tableData = visible.map((draft, index) => {
+      const row = [String(index + 1)];
+      if (cols.status) row.push(normalizeStatus(draft.status));
+      if (cols.createdBy) row.push(createdByLabel(draft));
+      if (cols.shop) row.push(typeof draft.shop === "object" && draft.shop?.name ? draft.shop.name : "—");
+      if (cols.files) row.push(String(draft.files?.length || 0));
+      return row;
+    });
+
+    autoTable(doc, {
+      head: [headers],
+      body: tableData,
+      startY: 20,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [0, 217, 163] }, // accent color
+    });
+
+    doc.save("drafts-report.pdf");
+  };
+
+  const downloadCSV = () => {
+    const headers = ["#"];
+    if (cols.status) headers.push("Status");
+    if (cols.createdBy) headers.push("Created By");
+    if (cols.shop) headers.push("Shop");
+    if (cols.files) headers.push("Files");
+
+    const rows = visible.map((draft, index) => {
+      const row = [String(index + 1)];
+      if (cols.status) row.push(`"${normalizeStatus(draft.status)}"`);
+      if (cols.createdBy) row.push(`"${createdByLabel(draft)}"`);
+      if (cols.shop) row.push(`"${typeof draft.shop === "object" && draft.shop?.name ? draft.shop.name : "—"}"`);
+      if (cols.files) row.push(`"${draft.files?.length || 0}"`);
+      return row.join(",");
+    });
+
+    const csvContent = [headers.join(","), ...rows].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", "drafts-report.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const handleDeleteSubmit = async () => {
     if (!selectedDraft || !token) return;
@@ -231,15 +286,33 @@ export function DraftsPanel() {
           </select>
         </div>
 
-        {/* Columns Dropdown */}
-        <div className="relative">
-          <button
-            onClick={() => setColsMenuOpen(!colsMenuOpen)}
-            className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-muted transition shadow-sm flex items-center gap-2"
-          >
-            Columns
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-          </button>
+        <div className="flex gap-3 items-center">
+          {/* Download Dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setDownloadMenuOpen(!downloadMenuOpen)}
+              className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-muted transition shadow-sm flex items-center gap-2"
+            >
+              Download
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            {downloadMenuOpen && (
+              <div className="absolute right-0 mt-2 w-32 bg-surface border border-border rounded-lg shadow-lg z-20 overflow-hidden">
+                <button onClick={() => { downloadPDF(); setDownloadMenuOpen(false); }} className="block w-full text-left px-4 py-2 text-sm hover:bg-surface-muted transition">PDF</button>
+                <button onClick={() => { downloadCSV(); setDownloadMenuOpen(false); }} className="block w-full text-left px-4 py-2 text-sm hover:bg-surface-muted transition border-t border-border">CSV</button>
+              </div>
+            )}
+          </div>
+
+          {/* Columns Dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setColsMenuOpen(!colsMenuOpen)}
+              className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-muted transition shadow-sm flex items-center gap-2"
+            >
+              Columns
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
           {colsMenuOpen && (
           <div className="absolute right-0 mt-2 w-48 bg-surface border border-border rounded-lg shadow-lg z-20 p-2">
             {Object.entries(cols).map(([key, isVisible]) => (
@@ -254,7 +327,8 @@ export function DraftsPanel() {
               </label>
             ))}
           </div>
-        )}
+          )}
+        </div>
         </div>
       </div>
 
@@ -268,15 +342,16 @@ export function DraftsPanel() {
                 <th className="px-4 py-3 font-medium w-12">#</th>
                 {cols.status && <th className="px-4 py-3 font-medium">Status</th>}
                 {cols.createdBy && <th className="px-4 py-3 font-medium">Created by</th>}
-                {cols.createdAt && <th className="px-4 py-3 font-medium">Created At</th>}
+                {cols.shop && <th className="px-4 py-3 font-medium">Shop</th>}
+                {cols.files && <th className="px-4 py-3 font-medium">Files</th>}
                 {cols.actions && <th className="px-4 py-3 font-medium text-right">Actions</th>}
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={4} className="px-4 py-12 text-center text-muted">Loading drafts…</td></tr>
+                <tr><td colSpan={Object.values(cols).filter(Boolean).length + 1} className="px-4 py-12 text-center text-muted">Loading drafts…</td></tr>
               ) : paginatedData.length === 0 ? (
-                <tr><td colSpan={4} className="px-4 py-12 text-center text-muted">No drafts in this view.</td></tr>
+                <tr><td colSpan={Object.values(cols).filter(Boolean).length + 1} className="px-4 py-12 text-center text-muted">No drafts in this view.</td></tr>
               ) : (
                 paginatedData.map((draft, index) => {
                   const status = normalizeStatus(draft.status);
@@ -297,7 +372,16 @@ export function DraftsPanel() {
                           {phone ? <div className="mt-0.5 text-xs text-muted">{phone}</div> : null}
                         </td>
                       )}
-                      {cols.createdAt && <td className="px-4 py-4 text-muted">{formatWhen(draft.createdAt)}</td>}
+                      {cols.shop && (
+                        <td className="px-4 py-4 text-muted">
+                          {typeof draft.shop === "object" && draft.shop?.name ? draft.shop.name : "—"}
+                        </td>
+                      )}
+                      {cols.files && (
+                        <td className="px-4 py-4 text-muted tabular-nums">
+                          {draft.files?.length ?? 0}
+                        </td>
+                      )}
                       {cols.actions && (
                         <td className="px-4 py-4">
                           <div className="flex justify-end items-center gap-2">
@@ -347,7 +431,8 @@ export function DraftsPanel() {
             <div className="grid grid-cols-2 gap-4">
               <div><p className="text-xs text-muted mb-1">Status</p><StatusBadge status={normalizeStatus(selectedDraft.status)} /></div>
               <div><p className="text-xs text-muted mb-1">Created By</p><p className="font-medium">{createdByLabel(selectedDraft)}</p></div>
-              <div><p className="text-xs text-muted mb-1">Created At</p><p className="font-medium">{formatWhen(selectedDraft.createdAt)}</p></div>
+              <div><p className="text-xs text-muted mb-1">Shop</p><p className="font-medium">{typeof selectedDraft.shop === "object" && selectedDraft.shop?.name ? selectedDraft.shop.name : "—"}</p></div>
+              <div><p className="text-xs text-muted mb-1">Files</p><p className="font-medium">{selectedDraft.files?.length ?? 0} file{(selectedDraft.files?.length ?? 0) !== 1 ? "s" : ""}</p></div>
             </div>
           </div>
         )}
