@@ -7,7 +7,7 @@
     "nodejs_compat"
   ],
   "vars": {
-    "API_HOST": "https://clickprintbackend.wckd.pk"
+    "API_HOST": "https://api.clickprint.pk"
   },
   "assets": {
     "directory": ".open-next/assets",
