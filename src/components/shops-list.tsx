@@ -5,9 +5,10 @@ import Link from "next/link";
 import { useAuth } from "@/components/auth-provider";
 import type { ListShopsResponse, Shop } from "@/lib/types";
 import { StatCard } from "@/components/ui/stat-card";
-import { ShopIcon, EyeIcon, PencilIcon, TrashIcon, RefreshIcon, PlusIcon, PowerIcon, WifiIcon, WifiOffIcon } from "@/components/icons";
+import { ShopIcon, EyeIcon, PencilIcon, TrashIcon, RefreshIcon, PlusIcon, PowerIcon, WifiIcon, WifiOffIcon, QrCodeIcon } from "@/components/icons";
 import { Modal } from "@/components/ui/modal";
 import { ShopForm } from "@/components/shop-form";
+import { ShopSignageModal } from "@/components/shop-signage-modal";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -87,7 +88,7 @@ export function ShopsList() {
   const [error, setError] = useState<string | null>(null);
 
   const [selectedShop, setSelectedShop] = useState<Shop | null>(null);
-  const [modalMode, setModalMode] = useState<"view" | "edit" | "delete" | "toggle" | null>(null);
+  const [modalMode, setModalMode] = useState<"view" | "edit" | "delete" | "toggle" | "signage" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -243,7 +244,7 @@ export function ShopsList() {
     document.body.removeChild(link);
   };
 
-  const openModal = (shop: Shop, mode: "view" | "edit" | "delete" | "toggle") => {
+  const openModal = (shop: Shop, mode: "view" | "edit" | "delete" | "toggle" | "signage") => {
     setSelectedShop(shop);
     setModalMode(mode);
     setActionError(null);
@@ -465,6 +466,7 @@ export function ShopsList() {
                       {cols.actions && (
                         <td className="px-4 py-3">
                           <div className="flex justify-end gap-2">
+                            <button onClick={(e) => { e.stopPropagation(); openModal(shop, "signage"); }} title="Export Dual QR Signage (PDF)" className="p-1.5 text-muted hover:text-accent transition"><QrCodeIcon className="w-4 h-4" /></button>
                             <button onClick={(e) => { e.stopPropagation(); openModal(shop, "view"); }} className="p-1.5 text-muted hover:text-foreground transition"><EyeIcon className="w-4 h-4" /></button>
                             <button onClick={(e) => { e.stopPropagation(); openModal(shop, "edit"); }} className="p-1.5 text-muted hover:text-accent transition"><PencilIcon className="w-4 h-4" /></button>
                             <button
@@ -539,6 +541,16 @@ export function ShopsList() {
                   ))}
                 </div>
               </div>
+              <div className="col-span-2 pt-2 border-t border-border flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setModalMode("signage")}
+                  className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-accent-hover transition"
+                >
+                  <QrCodeIcon className="w-4 h-4" />
+                  Dual QR Code Signage (PDF)
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -602,6 +614,13 @@ export function ShopsList() {
           </div>
         )}
       </Modal>
+
+      {/* Dual QR Printable Signage Modal */}
+      <ShopSignageModal
+        shop={selectedShop}
+        isOpen={modalMode === "signage"}
+        onClose={closeModal}
+      />
     </div>
   );
 }
