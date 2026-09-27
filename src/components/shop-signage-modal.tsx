@@ -245,23 +245,13 @@ export function ShopSignageModal({ shop, isOpen, onClose }: ShopSignageModalProp
             <p className="text-xs text-muted">
               PDF exports in 300+ DPI suitable for A4 or US Letter color printing & laminating.
             </p>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface-muted transition"
-              >
-                Close
-              </button>
-              <button
-                type="button"
-                onClick={handleDownloadPdf}
-                disabled={downloading || loading || !qrData}
-                className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-accent-hover transition disabled:opacity-50 flex items-center gap-2"
-              >
-                {downloading ? "Exporting…" : "Download PDF Signage"}
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface-muted transition"
+            >
+              Close
+            </button>
           </div>
         </div>
       )}

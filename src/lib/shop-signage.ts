@@ -162,24 +162,17 @@ export async function prepareDualQrCodes(shop: Shop): Promise<DualQrData> {
 }
 
 /**
- * Generates and downloads a print-ready, high-resolution A4 PDF document
- * with both QR codes side-by-side, shop name header, and store display styling.
+ * Renders the shared page chrome: background, border, brand banner, shop name,
+ * address tagline, and footer. Returns the Y position after the divider line
+ * so the caller can start placing card content there.
  */
-export async function downloadShopSignagePdf(shop: Shop): Promise<void> {
-  const qrData = await prepareDualQrCodes(shop);
-
-  // A4 dimensions: 210mm x 297mm
-  const doc = new jsPDF({
-    orientation: "portrait",
-    unit: "mm",
-    format: "a4",
-    compress: true,
-  });
-
-  const pageWidth = 210;
-  const pageHeight = 297;
-  const margin = 14;
-
+function renderPageChrome(
+  doc: jsPDF,
+  shop: Shop,
+  pageWidth: number,
+  pageHeight: number,
+  margin: number
+): number {
   // Background base
   doc.setFillColor(252, 253, 254);
   doc.rect(0, 0, pageWidth, pageHeight, "F");
@@ -229,117 +222,101 @@ export async function downloadShopSignagePdf(shop: Shop): Promise<void> {
   doc.setLineWidth(0.4);
   doc.line(margin + 20, currentY, pageWidth - margin - 20, currentY);
 
-  // Main Dual QR Code Section: Side-by-Side Cards
-  currentY += 12;
-  const contentWidth = pageWidth - margin * 2;
-  const cardGap = 8;
-  const cardWidth = (contentWidth - 20 - cardGap) / 2; // ~83mm each
-  const cardHeight = 126;
-  const leftCardX = margin + 10;
-  const rightCardX = leftCardX + cardWidth + cardGap;
-  const cardY = currentY;
+  // Footer
+  const footerY = pageHeight - margin - 8;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(148, 163, 184);
+  doc.text("Fast • Contactless • High Quality Printing — Powered by ClickPrint", pageWidth / 2, footerY, { align: "center" });
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // Card 1: App QR Code (Left)
-  // ──────────────────────────────────────────────────────────────────────────
+  return currentY;
+}
+
+/**
+ * Generates and downloads a print-ready, high-resolution A4 PDF document
+ * with each QR code on its own separate page, shop name header, and store display styling.
+ */
+export async function downloadShopSignagePdf(shop: Shop): Promise<void> {
+  const qrData = await prepareDualQrCodes(shop);
+
+  // A4 dimensions: 210mm x 297mm
+  const doc = new jsPDF({
+    orientation: "portrait",
+    unit: "mm",
+    format: "a4",
+    compress: true,
+  });
+
+  const pageWidth = 210;
+  const pageHeight = 297;
+  const margin = 14;
+  const contentWidth = pageWidth - margin * 2;
+
+  // Card dimensions (now larger since each card gets a full page)
+  const cardWidth = contentWidth - 20;
+  const cardHeight = 170;
+  const cardX = margin + 10;
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PAGE 1: App QR Code
+  // ══════════════════════════════════════════════════════════════════════════
+  let currentY = renderPageChrome(doc, shop, pageWidth, pageHeight, margin);
+  currentY += 12;
+  const cardY1 = currentY;
+
   doc.setFillColor(255, 255, 255);
   doc.setDrawColor(203, 213, 225);
   doc.setLineWidth(0.6);
-  doc.roundedRect(leftCardX, cardY, cardWidth, cardHeight, 6, 6, "FD");
+  doc.roundedRect(cardX, cardY1, cardWidth, cardHeight, 6, 6, "FD");
 
-  // Top accent bar for Card 1 (ClickPrint Emerald)
+  // Top accent bar (ClickPrint Emerald)
   doc.setFillColor(0, 217, 163);
-  doc.roundedRect(leftCardX, cardY, cardWidth, 6, 6, 6, "F");
-  doc.rect(leftCardX, cardY + 3, cardWidth, 3, "F");
+  doc.roundedRect(cardX, cardY1, cardWidth, 6, 6, 6, "F");
+  doc.rect(cardX, cardY1 + 3, cardWidth, 3, "F");
 
-  // Card 1 Header Label: "Use this to install our app"
+  // Header Label
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(13);
+  doc.setFontSize(18);
   doc.setTextColor(15, 23, 42);
-  doc.text("Use this to install our app", leftCardX + cardWidth / 2, cardY + 16, { align: "center" });
+  doc.text("Use this to install our app", cardX + cardWidth / 2, cardY1 + 20, { align: "center" });
 
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(8.5);
+  doc.setFontSize(11);
   doc.setTextColor(100, 116, 139);
-  doc.text("Scan to upload & order prints directly", leftCardX + cardWidth / 2, cardY + 22, { align: "center" });
+  doc.text("Scan to upload & order prints directly", cardX + cardWidth / 2, cardY1 + 28, { align: "center" });
 
-  // App QR Image with Centered App Logo
-  const qrSize = 62;
-  const qrX1 = leftCardX + (cardWidth - qrSize) / 2;
-  const qrY1 = cardY + 27;
+  // App QR Image (larger since it has the full page)
+  const qrSize = 100;
+  const qrX1 = cardX + (cardWidth - qrSize) / 2;
+  const qrY1 = cardY1 + 35;
   doc.addImage(qrData.appQrDataUrl, "PNG", qrX1, qrY1, qrSize, qrSize);
 
   // Badge below App QR
   doc.setFillColor(241, 245, 249);
-  doc.roundedRect(leftCardX + 8, cardY + 94, cardWidth - 16, 12, 3, 3, "F");
+  doc.roundedRect(cardX + 20, cardY1 + 140, cardWidth - 40, 14, 3, 3, "F");
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(8.5);
+  doc.setFontSize(11);
   doc.setTextColor(15, 23, 42);
-  doc.text("Open Phone Camera & Scan", leftCardX + cardWidth / 2, cardY + 101.5, { align: "center" });
+  doc.text("Open Phone Camera & Scan", cardX + cardWidth / 2, cardY1 + 149, { align: "center" });
 
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(7.5);
+  doc.setFontSize(9);
   doc.setTextColor(148, 163, 184);
-  doc.text("app.clickprint.pk", leftCardX + cardWidth / 2, cardY + 117, { align: "center" });
+  doc.text("app.clickprint.pk", cardX + cardWidth / 2, cardY1 + 163, { align: "center" });
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // Card 2: WhatsApp QR Code (Right)
-  // ──────────────────────────────────────────────────────────────────────────
-  doc.setFillColor(255, 255, 255);
-  doc.setDrawColor(203, 213, 225);
-  doc.setLineWidth(0.6);
-  doc.roundedRect(rightCardX, cardY, cardWidth, cardHeight, 6, 6, "FD");
-
-  // Top accent bar for Card 2 (WhatsApp Green #25D366)
-  doc.setFillColor(37, 211, 102);
-  doc.roundedRect(rightCardX, cardY, cardWidth, 6, 6, 6, "F");
-  doc.rect(rightCardX, cardY + 3, cardWidth, 3, "F");
-
-  // Card 2 Header Label: "Use to send on WhatsApp"
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(13);
-  doc.setTextColor(15, 23, 42);
-  doc.text("Use to send on WhatsApp", rightCardX + cardWidth / 2, cardY + 16, { align: "center" });
-
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8.5);
-  doc.setTextColor(100, 116, 139);
-  doc.text("Scan to chat & send files on WhatsApp", rightCardX + cardWidth / 2, cardY + 22, { align: "center" });
-
-  // WhatsApp QR Image with Centered WhatsApp Logo
-  const qrX2 = rightCardX + (cardWidth - qrSize) / 2;
-  const qrY2 = cardY + 27;
-  doc.addImage(qrData.whatsappQrDataUrl, "PNG", qrX2, qrY2, qrSize, qrSize);
-
-  // Badge below WhatsApp QR
-  doc.setFillColor(240, 253, 244); // light green bg
-  doc.roundedRect(rightCardX + 8, cardY + 94, cardWidth - 16, 12, 3, 3, "F");
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(8.5);
-  doc.setTextColor(22, 101, 52); // green-800
-  doc.text(shop.contactNumber ? `WhatsApp: ${shop.contactNumber}` : "WhatsApp Chat Link", rightCardX + cardWidth / 2, cardY + 101.5, { align: "center" });
-
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(7.5);
-  doc.setTextColor(148, 163, 184);
-  const waDisplay = qrData.whatsappUrl.replace(/^https?:\/\//, "");
-  doc.text(waDisplay, rightCardX + cardWidth / 2, cardY + 117, { align: "center" });
-
-  // ──────────────────────────────────────────────────────────────────────────
-  // Quick Step-by-Step Instructions Banner
-  // ──────────────────────────────────────────────────────────────────────────
-  const stepsY = cardY + cardHeight + 12;
+  // Instructions Banner (Page 1)
+  const stepsY1 = cardY1 + cardHeight + 12;
   const stepsBoxWidth = contentWidth - 20;
   const stepsBoxX = margin + 10;
 
   doc.setFillColor(248, 250, 252);
   doc.setDrawColor(226, 232, 240);
-  doc.roundedRect(stepsBoxX, stepsY, stepsBoxWidth, 34, 4, 4, "FD");
+  doc.roundedRect(stepsBoxX, stepsY1, stepsBoxWidth, 34, 4, 4, "FD");
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9.5);
   doc.setTextColor(15, 23, 42);
-  doc.text("HOW TO PRINT INSTANTLY", stepsBoxX + stepsBoxWidth / 2, stepsY + 9, { align: "center" });
+  doc.text("HOW TO PRINT INSTANTLY", stepsBoxX + stepsBoxWidth / 2, stepsY1 + 9, { align: "center" });
 
   const colW = stepsBoxWidth / 3;
   const stepItems = [
@@ -350,34 +327,109 @@ export async function downloadShopSignagePdf(shop: Shop): Promise<void> {
 
   stepItems.forEach((item, idx) => {
     const colCenter = stepsBoxX + colW * idx + colW / 2;
-    // Step number pill
     doc.setFillColor(0, 217, 163);
-    doc.circle(colCenter - 22, stepsY + 20, 3.5, "F");
+    doc.circle(colCenter - 22, stepsY1 + 20, 3.5, "F");
     doc.setTextColor(255, 255, 255);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(7.5);
-    doc.text(item.num, colCenter - 22, stepsY + 21.2, { align: "center" });
+    doc.text(item.num, colCenter - 22, stepsY1 + 21.2, { align: "center" });
 
-    // Step text
     doc.setTextColor(15, 23, 42);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(8.5);
-    doc.text(item.title, colCenter - 14, stepsY + 19, { align: "left" });
+    doc.text(item.title, colCenter - 14, stepsY1 + 19, { align: "left" });
 
     doc.setTextColor(100, 116, 139);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(7.5);
-    doc.text(item.desc, colCenter - 14, stepsY + 25, { align: "left" });
+    doc.text(item.desc, colCenter - 14, stepsY1 + 25, { align: "left" });
   });
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // Footer
-  // ──────────────────────────────────────────────────────────────────────────
-  const footerY = pageHeight - margin - 8;
+  // ══════════════════════════════════════════════════════════════════════════
+  // PAGE 2: WhatsApp QR Code
+  // ══════════════════════════════════════════════════════════════════════════
+  doc.addPage();
+  currentY = renderPageChrome(doc, shop, pageWidth, pageHeight, margin);
+  currentY += 12;
+  const cardY2 = currentY;
+
+  doc.setFillColor(255, 255, 255);
+  doc.setDrawColor(203, 213, 225);
+  doc.setLineWidth(0.6);
+  doc.roundedRect(cardX, cardY2, cardWidth, cardHeight, 6, 6, "FD");
+
+  // Top accent bar (WhatsApp Green #25D366)
+  doc.setFillColor(37, 211, 102);
+  doc.roundedRect(cardX, cardY2, cardWidth, 6, 6, 6, "F");
+  doc.rect(cardX, cardY2 + 3, cardWidth, 3, "F");
+
+  // Header Label
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(18);
+  doc.setTextColor(15, 23, 42);
+  doc.text("Use to send on WhatsApp", cardX + cardWidth / 2, cardY2 + 20, { align: "center" });
+
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
+  doc.setFontSize(11);
+  doc.setTextColor(100, 116, 139);
+  doc.text("Scan to chat & send files on WhatsApp", cardX + cardWidth / 2, cardY2 + 28, { align: "center" });
+
+  // WhatsApp QR Image (larger since it has the full page)
+  const qrX2 = cardX + (cardWidth - qrSize) / 2;
+  const qrY2 = cardY2 + 35;
+  doc.addImage(qrData.whatsappQrDataUrl, "PNG", qrX2, qrY2, qrSize, qrSize);
+
+  // Badge below WhatsApp QR
+  doc.setFillColor(240, 253, 244); // light green bg
+  doc.roundedRect(cardX + 20, cardY2 + 140, cardWidth - 40, 14, 3, 3, "F");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.setTextColor(22, 101, 52); // green-800
+  doc.text(shop.contactNumber ? `WhatsApp: ${shop.contactNumber}` : "WhatsApp Chat Link", cardX + cardWidth / 2, cardY2 + 149, { align: "center" });
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
   doc.setTextColor(148, 163, 184);
-  doc.text("Fast • Contactless • High Quality Printing — Powered by ClickPrint", pageWidth / 2, footerY, { align: "center" });
+  const waDisplay = qrData.whatsappUrl.replace(/^https?:\/\//, "");
+  doc.text(waDisplay, cardX + cardWidth / 2, cardY2 + 163, { align: "center" });
+
+  // Instructions Banner (Page 2 — WhatsApp-specific steps)
+  const stepsY2 = cardY2 + cardHeight + 12;
+
+  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(226, 232, 240);
+  doc.roundedRect(stepsBoxX, stepsY2, stepsBoxWidth, 34, 4, 4, "FD");
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text("HOW TO SEND VIA WHATSAPP", stepsBoxX + stepsBoxWidth / 2, stepsY2 + 9, { align: "center" });
+
+  const waStepItems = [
+    { num: "1", title: "Scan WhatsApp QR", desc: "Open camera & scan" },
+    { num: "2", title: "Send Your Files", desc: "Share PDFs or photos" },
+    { num: "3", title: "Collect Prints", desc: "Get copies instantly" },
+  ];
+
+  waStepItems.forEach((item, idx) => {
+    const colCenter = stepsBoxX + colW * idx + colW / 2;
+    doc.setFillColor(37, 211, 102);
+    doc.circle(colCenter - 22, stepsY2 + 20, 3.5, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7.5);
+    doc.text(item.num, colCenter - 22, stepsY2 + 21.2, { align: "center" });
+
+    doc.setTextColor(15, 23, 42);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8.5);
+    doc.text(item.title, colCenter - 14, stepsY2 + 19, { align: "left" });
+
+    doc.setTextColor(100, 116, 139);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.5);
+    doc.text(item.desc, colCenter - 14, stepsY2 + 25, { align: "left" });
+  });
 
   // Safe filename
   const cleanShopName = (shop.name || "shop").toLowerCase().replace(/[^a-z0-9]+/g, "-");
